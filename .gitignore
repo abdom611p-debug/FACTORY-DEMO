@@ -1,0 +1,39 @@
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Python / AI Engine
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+venv/
+env/
+.env
+.venv/
+*.pt
+*.onnx
+*.engine
+data/faces.json
+
+# .NET / C# Backend
+bin/
+obj/
+backend/src/*/bin/
+backend/src/*/obj/
+backend/tests/*/bin/
+backend/tests/*/obj/
+.vs/
+*.user
+*.userossc
+*.suo
+
+# System & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

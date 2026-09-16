@@ -1,0 +1,24 @@
+# Web framework
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# AI and Computer Vision
+opencv-python-headless
+torch
+torchvision
+ultralytics
+facenet-pytorch
+numpy
+httpx
+# Utility
+python-multipart
+websockets
+shapely
+python-dotenv
+uuid
+
+# Testing
+pytest
+httpx

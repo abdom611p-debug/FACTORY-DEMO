@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: factory-db
+    environment:
+      POSTGRES_DB: factory_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: factory-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5000
+      - ConnectionStrings__DefaultConnection=Host=db;Database=factory_db;Username=postgres;Password=postgrespassword
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ai-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: factory-ai-engine
+    ports:
+      - "8000:8000"
+    environment:
+      - DEFAULT_CAMERA_SOURCE=0
+      - BACKEND_API_URL=http://backend:5000
+    depends_on:
+      - backend
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: factory-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+      - ai-engine
+
+volumes:
+  postgres_data:
