@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EGIC · AI Safety & Smart Access Platform</title>
+<meta name="description" content="العرض التنفيذي لمنصة EGIC للسلامة والوصول الذكي بالذكاء الاصطناعي — POWERED BY DELMON & DEV SMART X">
+<meta name="theme-color" content="#070D0A">
+<link rel="icon" type="image/png" href="assets/egic-favicon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="briefing.css">
+<script>try { var t = localStorage.getItem('egic-brief-mode'); if (t) document.documentElement.setAttribute('data-mode', t); } catch (e) {}</script>
+</head>
+<body class="brief">
+
+<!-- ===================== TOP BAR ===================== -->
+<header class="bar" id="bar">
+  <a class="bar-brand" href="#overview" aria-label="EGIC">
+    <span class="egic-badge"><img src="assets/egic-logo.png" alt="EGIC"></span>
+    <span class="bar-title"><b class="egic-word">EGIC</b><small>AI SAFETY &amp; SMART ACCESS PLATFORM</small></span>
+  </a>
+  <span class="powered bar-powered"><span class="dot"></span>POWERED BY <b>DELMON</b><span class="amp">&amp;</span><b>DEV SMART X</b></span>
+  <span class="grow"></span>
+  <div class="seg" role="group" aria-label="وضع العرض">
+    <button type="button" data-mode="exec" aria-pressed="false">تنفيذي</button>
+    <button type="button" data-mode="tech" aria-pressed="true">تقني</button>
+  </div>
+  <button class="btn btn--sm" id="demoRun" title="تشغيل سلسلة الحدث (D)">⚡ DEMO</button>
+  <button class="btn btn--sm btn--icon" id="fsBtn" title="ملء الشاشة (F)" aria-label="ملء الشاشة"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
+  <button class="btn btn--sm btn--icon" id="printBtn" title="نسخة للطباعة (P)" aria-label="طباعة"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7" rx="1"/></svg></button>
+  <a class="btn btn--sm btn--accent" href="console.html" id="consoleLink">المنصة الحية ↗</a>
+</header>
+
+<!-- ===================== NAV RAIL ===================== -->
+<nav class="rail" id="rail" aria-label="فهرس العرض"></nav>
+
+<!-- ===================== STATUS BAR ===================== -->
+<footer class="sbar" id="sbar">
+  <span><i class="dot dot--on"></i><b id="sbSection">00 · OPENING</b></span>
+  <span class="sb-prog"><i id="sbProg"></i></span>
+  <span class="hide-sm" id="sbMode">MODE · TECHNICAL</span>
+  <span class="hide-sm">KEYS · 1-9 · ← → · E/T · D · F · P · ?</span>
+  <span class="hide-sm" id="sbBackend">ENGINE · —</span>
+  <span id="sbClock">—</span>
+</footer>
+
+<main id="main">
+
+<!-- ===================== 00 OPENING ===================== -->
+<section class="opening" id="opening" data-chapter="0" aria-label="الافتتاح">
+  <div class="opening-stage">
+    <div class="beat beat-0 is-on" data-beat="0">
+      <div class="boot mono"><span>EGIC · AI SAFETY &amp; SMART ACCESS · EXECUTIVE BRIEFING</span><span class="boot-line"></span><span class="powered"><span class="dot"></span>POWERED BY <b>DELMON</b><span class="amp">&amp;</span><b>DEV SMART X</b></span></div>
+    </div>
+    <div class="beat beat-1" data-beat="1">
+      <blockquote class="quote" id="quote">إذا نزل مؤمنٌ وكافرٌ إلى البحر، فلا ينجو إلا من تعلّم السباحة؛ فالله لا يحابي الجهل.</blockquote>
+      <cite class="quote-cite">يُنسب إلى د. مصطفى محمود</cite>
+    </div>
+    <div class="beat beat-2" data-beat="2">
+      <p class="lead-xl">الاقتباس هنا ليس للزينة.</p>
+      <p class="lead-lg">معناه ببساطة: النجاح في بيئة معقدة يحتاج <em>معرفة</em>، و<em>استعدادًا</em>، و<em>أخذًا بالأسباب</em>.</p>
+    </div>
+    <div class="beat beat-3" data-beat="3">
+      <p class="lead-xl">إحنا النهارده مش جايين نطلب ثقة في رقم.</p>
+      <p class="lead-xl accent">إحنا جايين نوضح لحضراتكم إحنا بنقدم إيه بالضبط مقابل الرقم ده.</p>
+    </div>
+    <div class="beat beat-4" data-beat="4">
+      <p class="lead-lg">المشروع كبير، والرقم التجاري لا يُقيَّم منفردًا. لذلك سنفكّك الاجتماع إلى:</p>
+      <ol class="manifest" id="manifest">
+        <li><span>المعمارية</span><i>ARCHITECTURE</i></li><li><span>الذكاء الاصطناعي</span><i>AI</i></li><li><span>الرؤية الحاسوبية</span><i>COMPUTER VISION</i></li>
+        <li><span>محرك BBS</span><i>BEHAVIOR</i></li><li><span>منظومة ANPR</span><i>SMART ACCESS</i></li><li><span>المنصة المركزية</span><i>CENTRAL PLATFORM</i></li>
+        <li><span>التكامل</span><i>INTEGRATION</i></li><li><span>النشر</span><i>DEPLOYMENT</i></li><li><span>البنية التحتية</span><i>INFRASTRUCTURE</i></li>
+        <li><span>التوسع في السعودية</span><i>KSA ROLLOUT</i></li><li><span>الدعم</span><i>SUPPORT</i></li><li><span>وأخيرًا: الهيكل التجاري</span><i>COMMERCIAL</i></li>
+      </ol>
+    </div>
+    <div class="beat beat-5" data-beat="5">
+      <p class="lead-xxl">خلونا نشوف المشروع من الداخل.</p>
+      <a class="btn btn--accent enter" href="#overview">ابدأ ↓</a>
+    </div>
+    <div class="opening-hint mono">SCROLL · SPACE · ↓</div>
+  </div>
+</section>
+
+<!-- ===================== 01 OVERVIEW / HERO ===================== -->
+<section class="sec hero" id="overview" data-chapter="1">
+  <canvas class="hero-canvas" id="heroCanvas" aria-hidden="true"></canvas>
+  <div class="wrap hero-in">
+    <div class="hero-brand">
+      <span class="egic-badge egic-badge--xl"><img src="assets/egic-logo.png" alt="EGIC — Superior German Quality"></span>
+      <div>
+        <div class="kicker mono">01 · OVERVIEW</div>
+        <h1 class="hero-title ltr"><span>EGIC</span> AI SAFETY &amp; SMART ACCESS PLATFORM</h1>
+      </div>
+    </div>
+    <p class="hero-en ltr">From Existing Infrastructure<br>to Enterprise Intelligence.</p>
+    <p class="hero-ar">تحويل البنية التحتية الحالية للمراقبة إلى منظومة ذكاء صناعي مركزية للسلامة والأمن والتحكم والتحليلات التشغيلية.</p>
+    <dl class="meta-strip mono">
+      <div><dt>SITES</dt><dd>09</dd></div>
+      <div><dt>PLANTS</dt><dd>05</dd></div>
+      <div><dt>WAREHOUSES</dt><dd>04</dd></div>
+      <div><dt>KSA SITE</dt><dd>01</dd></div>
+      <div><dt>DEPLOYMENT</dt><dd>ON-PREMISE</dd></div>
+      <div><dt>MODE</dt><dd>MULTI-SITE</dd></div>
+      <div><dt>AI</dt><dd>ON-DEVICE · EDGE</dd></div>
+      <div><dt>PROPOSED BY</dt><dd>DELMON × DEV SMART X</dd></div>
+    </dl>
+    <div class="hero-actions">
+      <a class="btn btn--accent" href="console.html">افتح المنصة الحية ↗</a>
+      <a class="btn" href="console.html#/live">جرّب الكاميرا بالذكاء الاصطناعي</a>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="integrity card">
+      <div class="integrity-h"><span class="mono">DATA INTEGRITY PROTOCOL</span><b>كل رقم في هذا العرض له تصنيف واضح</b></div>
+      <ul class="integrity-list">
+        <li><span class="ev ev-pub">سعر منشور</span>سعر معلن من مورد أو موزع</li>
+        <li><span class="ev ev-deal">صفقة حقيقية</span>تعاقد معلن رسميًا</li>
+        <li><span class="ev ev-dep">دليل تنفيذ</span>مشروع منفذ — بدون سعر</li>
+        <li><span class="ev ev-ana">تقدير تحليلي</span>مخصصات داخلية من DELMON</li>
+        <li><span class="ev ev-ill">بيانات توضيحية</span>محاكاة لشرح السلوك</li>
+        <li><span class="ev ev-tbc">يُؤكد لاحقًا</span>يُحدد أثناء التقييم الميداني</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 01b CONTEXT ===================== -->
+<section class="sec" id="context" data-chapter="1">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">01 · CONTEXT — ما قبل الاقتراح</div><h2>قبل أي معمارية: فهم بيئة التشغيل</h2><p>لا يمكن تصميم طبقة ذكاء فوق بيئة لا نفهمها. هذه الصورة كما جمعناها من المصادر العامة لـ EGIC ومن نقاشاتنا السابقة معكم.</p></div>
+    <div class="ctx-facts" id="ctxFacts">
+      <div class="fact"><b data-count="1991">1991</b><span>سنة التأسيس</span></div>
+      <div class="fact"><b data-count="30" data-suffix="+">30+</b><span>عامًا في حلول التغذية والصرف</span></div>
+      <div class="fact"><b data-count="60" data-suffix="+">60+</b><span>دولة تصدير</span></div>
+      <div class="fact"><b>ISO 45001</b><span>منظومة السلامة والصحة المهنية قائمة بالفعل</span></div>
+      <div class="fact"><b>SAP</b><span>منذ 2013 — نقطة تكامل جاهزة</span></div>
+    </div>
+    <p class="src-note">المصدر: الموقع الرسمي لـ EGIC (egic.com.eg) — صفحات About وManufacturing Technology.</p>
+
+    <div class="ctx-grid">
+      <div class="card ctx-process">
+        <div class="card-h"><div class="card-t">خريطة العمليات ← خريطة المخاطر</div><span class="ev ev-tbc">نمطية · تُؤكد ميدانيًا</span></div>
+        <div class="card-b">
+          <div class="proc-tabs seg" role="group"><button type="button" data-line="brass" aria-pressed="true">مسبك النحاس — بني سويف</button><button type="button" data-line="plastics" aria-pressed="false">البلاستيك — 6 أكتوبر</button></div>
+          <div class="proc-line" id="procLine"></div>
+          <div class="proc-detail" id="procDetail"></div>
+        </div>
+      </div>
+      <div class="card ctx-sites">
+        <div class="card-h"><div class="card-t">مرافق التصنيع المعلنة</div><span class="ev ev-pub">مصدر عام</span></div>
+        <div class="card-b">
+          <div class="facility"><b>October I · 6 أكتوبر</b><span>37,000 م² · طاقة 38,000 طن · أنابيب ووصلات PVC / PP / PPR</span></div>
+          <div class="facility"><b>October II · 6 أكتوبر</b><span>43,000 م² · طاقة 17,000 طن · أنابيب PE / PPR / PP</span></div>
+          <div class="facility"><b>Beni Suef Foundry · بني سويف</b><span>2,500 م² · 2,000 طن/سنة نحاس · صب، حدادة، CNC، طلاء كهربائي، تجميع واختبار ضغط حتى 25 بار</span></div>
+          <div class="facility"><b>Germany</b><span>مرفق في ألمانيا (حسب الموقع الرسمي)</span></div>
+          <p class="muted small">ربط المواقع التسعة في هذا المشروع بهذه المرافق يُؤكد مع EGIC أثناء التقييم.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="ctx-grid ctx-grid--b">
+      <div class="card">
+        <div class="card-h"><div class="card-t">مسار العمل مع EGIC حتى الآن</div></div>
+        <div class="card-b">
+          <ol class="track" id="track">
+            <li class="in"><b>البوابة</b><span>قراءة لوحات المركبات تلقائيًا، وتسجيل كل دخول وخروج ومدة البقاء، وتنبيه للمركبة غير المسموح لها.</span><em>ضمن هذا النطاق</em></li>
+            <li class="in"><b>معدات الوقاية</b><span>رصد أي شخص لا يرتدي معدات الوقاية وإنذار فوري للمشرف.</span><em>ضمن هذا النطاق</em></li>
+            <li class="in"><b>تقليل الهالك</b><span>تنبيه فوري للمشرف إذا ترك العامل الماكينة أو حدث موقف غير معتاد.</span><em>مُضمَّن تجريبيًا — Pose AI</em></li>
+            <li><b>قسم الطلاء</b><span>ملف لكل عامل وإنتاجيته.</span><em>مسار مستقبلي</em></li>
+            <li><b>التخطيط</b><span>التزام مواعيد الأوردرات والتنبؤ — بيانات شاشات HMI (BTB) للإنتاج الفعلي مقابل النظري والتوقفات.</span><em>مسار مستقبلي</em></li>
+          </ol>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><div class="card-t">متطلبات أكّدتموها</div></div>
+        <div class="card-b">
+          <ul class="checks">
+            <li>التشغيل داخل المصنع على أجهزة EGIC</li>
+            <li>التخزين على سيرفرات EGIC الداخلية فقط</li>
+            <li>لا بدء قبل موافقة مدير الأمن ومدير IT</li>
+            <li>إعادة استخدام الكاميرات القائمة أولًا</li>
+          </ul>
+          <div class="ref">
+            <span class="ev ev-dep">مرجع تنفيذ DELMON</span>
+            <b>تيتان للأسمنت — مصنع بني سويف</b>
+            <span>مراقبة السلامة ومعدات الوقاية بالذكاء الاصطناعي على كاميرات قائمة — نُفّذ بالشراكة مع Dev Smart X.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 01c CORE IDEA ===================== -->
+<section class="sec" id="core" data-chapter="1">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">01 · THE CORE IDEA</div><h2>EGIC لا تحتاج مزيدًا من الكاميرات.<br><span class="accent">EGIC تحتاج طبقة ذكاء فوق ما تملكه بالفعل.</span></h2><p>المنصة تحوّل البنية الحالية من أرشيف فيديو سلبي إلى نظام ذكاء صناعي نشط — من الكاميرا حتى قرار الإدارة.</p></div>
+    <div class="pipeline" id="pipeline"></div>
+    <div class="pipe-note" id="pipeNote"></div>
+    <div class="ba">
+      <div class="seg ba-toggle" role="group"><button type="button" data-ba="before" aria-pressed="false">قبل — فيديو سلبي</button><button type="button" data-ba="after" aria-pressed="true">بعد — ذكاء نشط</button></div>
+      <div class="ba-grid" id="baGrid"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 02 ARCHITECTURE ===================== -->
+<section class="sec" id="architecture" data-chapter="2">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">02 · ARCHITECTURE</div><h2>سبع طبقات. كل طبقة لها وظيفة ومسؤول ومخرج.</h2><p>اضغط على أي طبقة لعرض تفاصيلها التقنية. الطبقة الأولى قائمة لدى EGIC — ونحن نبني فوقها.</p></div>
+    <div class="arch" id="arch"></div>
+  </div>
+</section>
+
+<!-- ===================== 03 AI SAFETY ===================== -->
+<section class="sec" id="ai-safety" data-chapter="3">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">03 · AI SAFETY</div><h2>من فيديو خام إلى حدث سلامة منظم</h2><p>الكاميرا ترى صورة. المنصة ترى حدثًا له هوية ومكان وزمن وخطورة ودليل وإجراء.</p></div>
+    <div class="ais">
+      <div class="ais-stage card">
+        <svg id="aisScene" viewBox="0 0 640 360" role="img" aria-label="محاكاة: عامل يدخل منطقة إنتاج بدون خوذة ويرصده النظام"></svg>
+        <div class="ais-controls"><button class="btn btn--sm btn--accent" id="aisPlay">▶ تشغيل التسلسل</button><button class="btn btn--sm" id="aisReset">↺ إعادة</button><span class="ev ev-ill">محاكاة توضيحية</span><a class="btn btn--sm" href="console.html#/live">جرّبها حقيقية على الكاميرا ↗</a></div>
+      </div>
+      <ol class="ais-steps" id="aisSteps"></ol>
+    </div>
+    <div class="event-card card" id="eventCard" hidden></div>
+    <div class="sub-h"><h3>وحدات الذكاء الاصطناعي</h3><p>اضغط على أي وحدة لمعرفة ما ترصده وكيف ومتطلبات الكاميرا.</p></div>
+    <div class="modules" id="modules"></div>
+    <div class="live-strip card">
+      <div><span class="ev ev-real">نموذج حقيقي</span><b>ليس عرضًا نظريًا.</b> نماذج PPE (خوذة · نظارة · سترة) وقراءة اللوحات المصرية وذكاء السلوك تعمل الآن داخل المنصة على أي كاميرا — والنتيجة تُسجَّل في ملف العامل بلقطة ودليل.</div>
+      <a class="btn btn--accent" href="console.html#/live">افتح المختبر الحي ↗</a>
+    </div>
+
+    <!-- ========== PPE LIVE CAMERA LAB ========== -->
+    <div class="live-lab card" id="ppeLab">
+      <div class="live-lab__header">
+        <div class="live-lab__title">
+          <span class="live-lab__dot" id="ppeDot"></span>
+          <b>🦺 المختبر الحي — كشف معدات الوقاية (PPE)</b>
+          <span class="ev ev-real">LIVE AI</span>
+        </div>
+        <div class="live-lab__controls">
+          <button class="btn btn--sm btn--accent" id="ppeStartBtn" onclick="EGIC_LIVE.startPPE()">▶ تشغيل الكاميرا</button>
+          <button class="btn btn--sm" id="ppeStopBtn" onclick="EGIC_LIVE.stopPPE()" style="display:none">⏹ إيقاف</button>
+        </div>
+      </div>
+      <div class="live-lab__body">
+        <div class="live-lab__video-wrap">
+          <div class="live-lab__placeholder" id="ppePlaceholder">
+            <svg viewBox="0 0 80 80" width="64" height="64" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2"><circle cx="40" cy="40" r="30"/><path d="M32 30v20l18-10z" fill="rgba(255,255,255,0.2)" stroke="none"/></svg>
+            <span>اضغط «تشغيل الكاميرا» لبدء الكشف الحي</span>
+          </div>
+          <img id="ppeStream" class="live-lab__stream" style="display:none" alt="PPE Live Feed">
+        </div>
+        <div class="live-lab__status" id="ppeStatus">
+          <div class="live-lab__metric">
+            <span class="live-lab__metric-val" id="ppeFps">—</span>
+            <span class="live-lab__metric-lbl">FPS</span>
+          </div>
+          <div class="live-lab__metric">
+            <span class="live-lab__metric-val" id="ppeWorkers">0</span>
+            <span class="live-lab__metric-lbl">عمال</span>
+          </div>
+          <div class="live-lab__metric" id="ppeViolBox">
+            <span class="live-lab__metric-val" id="ppeViols">0</span>
+            <span class="live-lab__metric-lbl">مخالفات</span>
+          </div>
+          <div class="live-lab__details" id="ppeDetails">
+            <div class="live-lab__safe">✅ جميع العمال ملتزمون</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 04 BBS ===================== -->
+<section class="sec" id="bbs" data-chapter="4">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">04 · BBS ENGINE</div><h2>ليست «كاميرا ← إنذار».<br><span class="accent">إنها دورة كاملة تنتهي بقرار مبني على اتجاه.</span></h2><p>BBS (Behavior-Based Safety) يحوّل كل حدث إلى مؤشر، وكل مؤشر إلى اتجاه، وكل اتجاه إلى قرار — على مستوى القسم والوردية والموقع والمنطقة.</p></div>
+    <div class="bbs-grid">
+      <div class="card bbs-ring-card"><svg id="bbsRing" viewBox="0 0 520 520" role="img" aria-label="دورة حياة BBS من الكاميرا إلى الاتجاه"></svg><div class="bbs-node-info" id="bbsInfo"></div></div>
+      <div class="bbs-side">
+        <div class="card sr">
+          <div class="sr-col safe"><h4>سلوك آمن</h4><ul><li>ارتداء كامل لمعدات الوقاية</li><li>استخدام الممرات المخصصة</li><li>مسافة آمنة من الرافعات الشوكية</li><li>احترام حدود المناطق المحظورة</li><li>حماية عند العمل على ارتفاع</li></ul></div>
+          <div class="sr-col risk"><h4>سلوك خطر</h4><ul><li>خوذة أو نظارة غير موجودة</li><li>اختصار عبر ممر الرافعات</li><li>الجري داخل صالة الإنتاج</li><li>دخول منطقة اختبار الضغط أثناء التشغيل</li><li>انحناء خطر أثناء الرفع</li></ul></div>
+        </div>
+        <div class="drill card"><div class="drill-path mono">القسم → الوردية → الموقع → المنطقة → السلوك → الاتجاه</div><div class="seg" id="drillSeg" role="group"></div><div id="drillChart"></div><span class="ev ev-ill">بيانات توضيحية</span></div>
+      </div>
+    </div>
+    <div class="sub-h"><h3>مؤشرات BBS — كيف تُحسب</h3><p>كل مؤشر له تعريف رياضي واضح. القيم أدناه من بيئة العرض (توضيحية).</p></div>
+    <div class="kpis" id="bbsKpis"></div>
+  </div>
+</section>
+
+<!-- ===================== 05 SMART GATE ===================== -->
+<section class="sec" id="gate" data-chapter="5">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">05 · SMART ACCESS</div><h2>كل مركبة تصبح سجلًا</h2><p>البوابة لا تكتفي بفتح الحاجز: كل دخول وخروج يُسجَّل بلوحته ونوعه وموقعه ومدة بقائه وقرار الدخول — ولوحات مصرية بالحروف العربية.</p></div>
+    <div class="gate">
+      <div class="card gate-stage">
+        <svg id="gateScene" viewBox="0 0 640 330" role="img" aria-label="محاكاة بوابة ذكية: مركبة، كاميرا ANPR، قرار، حاجز"></svg>
+        <div class="gate-buttons" id="gateButtons"></div>
+      </div>
+      <div class="gate-side">
+        <div class="gate-flow" id="gateFlow"></div>
+        <div class="card gate-decision" id="gateDecision"><div class="muted">اختر سيناريو لتشغيل المحاكاة</div></div>
+      </div>
+    </div>
+    <div class="card"><div class="card-h"><div class="card-t">سجل البوابة — المحاكاة</div><span class="ev ev-ill">سجلات توضيحية</span></div><div class="card-b" style="padding:0"><div class="table-wrap"><table class="tbl" id="gateLog"><thead><tr><th>اللوحة</th><th>رقم المركبة</th><th>النوع</th><th>الاتجاه</th><th>الموقع</th><th>البوابة</th><th>القرار</th><th>مدة البقاء</th><th>التوقيت</th></tr></thead><tbody></tbody></table></div></div></div>
+
+    <!-- ========== CAR LIVE CAMERA LAB ========== -->
+    <div class="live-lab card" id="carLab">
+      <div class="live-lab__header">
+        <div class="live-lab__title">
+          <span class="live-lab__dot" id="carDot"></span>
+          <b>🏎️ المختبر الحي — قراءة اللوحات المصرية (ANPR)</b>
+          <span class="ev ev-real">LIVE AI</span>
+        </div>
+        <div class="live-lab__controls">
+          <button class="btn btn--sm btn--accent" id="carStartBtn" onclick="EGIC_LIVE.startCar()">▶ تشغيل الكاميرا</button>
+          <button class="btn btn--sm" id="carStopBtn" onclick="EGIC_LIVE.stopCar()" style="display:none">⏹ إيقاف</button>
+        </div>
+      </div>
+      <div class="live-lab__body">
+        <div class="live-lab__video-wrap">
+          <div class="live-lab__placeholder" id="carPlaceholder">
+            <svg viewBox="0 0 80 80" width="64" height="64" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2"><circle cx="40" cy="40" r="30"/><path d="M32 30v20l18-10z" fill="rgba(255,255,255,0.2)" stroke="none"/></svg>
+            <span>اضغط «تشغيل الكاميرا» لبدء قراءة اللوحات</span>
+          </div>
+          <img id="carStream" class="live-lab__stream" style="display:none" alt="Car ANPR Live Feed">
+        </div>
+        <div class="live-lab__status" id="carStatus">
+          <div class="live-lab__metric">
+            <span class="live-lab__metric-val" id="carFps">—</span>
+            <span class="live-lab__metric-lbl">FPS</span>
+          </div>
+          <div class="live-lab__metric">
+            <span class="live-lab__metric-val" id="carVehicles">0</span>
+            <span class="live-lab__metric-lbl">مركبات</span>
+          </div>
+          <div class="live-lab__metric">
+            <span class="live-lab__metric-val" id="carPlates">0</span>
+            <span class="live-lab__metric-lbl">لوحات مؤكدة</span>
+          </div>
+          <div class="live-lab__plates" id="carPlatesList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 06 SITES + COMMAND CENTER ===================== -->
+<section class="sec" id="sites" data-chapter="6">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">06 · 9 SITES</div><h2>منصة واحدة. تسعة مواقع.<br><span class="accent">صورة تشغيلية واحدة.</span></h2><p>اضغط على أي موقع لعرض ملفه. الأرقام إعدادات عرض توضيحية وتُؤكد أثناء التقييم الميداني.</p></div>
+    <div class="topo">
+      <div class="card topo-map"><svg id="topo" viewBox="0 0 900 460" role="img" aria-label="شبكة المواقع التسعة المتصلة بالمنصة المركزية"></svg></div>
+      <aside class="card topo-panel" id="sitePanel"></aside>
+    </div>
+    <div class="sub-h"><h3>مركز القيادة — معاينة حية من المنصة</h3><p>هذه البطاقات تقرأ مباشرة من محرك المنصة (بيانات عرض).</p></div>
+    <div class="cc" id="cc"></div>
+    <div class="cc-grid"><div class="card"><div class="card-h"><div class="card-t">مقارنة المواقع — الامتثال (24 س)</div><span class="ev ev-ill">DEMO DATA</span></div><div class="card-b" id="ccSites"></div></div><div class="card"><div class="card-h"><div class="card-t">آخر الأحداث — مباشر</div><a class="btn btn--xs" href="console.html">فتح لوحة القيادة ↗</a></div><div class="card-b" id="ccFeed"></div></div></div>
+  </div>
+</section>
+
+<!-- ===================== 07 INFRASTRUCTURE ===================== -->
+<section class="sec" id="reuse" data-chapter="7">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">07 · REUSE FIRST</div><h2>إعادة الاستخدام أولًا</h2><p>المشروع لا يفترض استبدال بنية EGIC. كل كاميرا وكل خادم يمر بقرار هندسي موثق: <b>استخدام كما هو</b> · <b>ترقية</b> · <b>استبدال</b>.</p></div>
+    <div class="tree">
+      <div class="card tree-q" id="treeQ"></div>
+      <div class="card tree-r" id="treeR"></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="infrastructure" data-chapter="7">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">07 · INFRASTRUCTURE</div><h2>ما هو قائم… وما هو مطلوب</h2><p>الفيديو يبقى داخل كل موقع على سيرفرات EGIC. ما ينتقل للمركز هو الأحداث والبيانات الوصفية والأدلة المختارة فقط.</p></div>
+    <div class="seg infra-filter" id="infraFilter" role="group"><button type="button" data-f="all" aria-pressed="true">الكل</button><button type="button" data-f="existing" aria-pressed="false">القائم</button><button type="button" data-f="new" aria-pressed="false">الجديد / المطلوب</button></div>
+    <div class="infra" id="infra"></div>
+    <div class="edge card">
+      <svg id="edgeSvg" viewBox="0 0 900 250" role="img" aria-label="المعالجة الطرفية في كل موقع والمنصة المركزية"></svg>
+    </div>
+    <div class="calc tech-only card" id="bwCalc"></div>
+  </div>
+</section>
+
+<section class="sec" id="security" data-chapter="7">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">07 · CYBERSECURITY</div><h2>الأمن جزء من المعمارية — لا إضافة في النهاية</h2><p>اضغط على أي ضابط أمني لرؤية أين يُطبَّق داخل المنظومة.</p></div>
+    <div class="sec-grid">
+      <div class="card"><svg id="zones" viewBox="0 0 560 360" role="img" aria-label="مناطق الأمان: شبكة الكاميرات، العقدة الطرفية، المنصة، المستخدمون"></svg></div>
+      <div class="controls" id="controls"></div>
+    </div>
+    <div class="law card">
+      <div><span class="ev ev-pub">تشريع</span><b>مصر — قانون حماية البيانات الشخصية 151 لسنة 2020</b><span>صدرت لائحته التنفيذية بقرار وزير الاتصالات رقم 816 لسنة 2025.</span></div>
+      <div><span class="ev ev-pub">تشريع</span><b>السعودية — نظام حماية البيانات الشخصية (PDPL)</b><span>نافذ بالكامل منذ 14 سبتمبر 2024 تحت إشراف سدايا (SDAIA)، مع ضوابط على نقل البيانات خارج المملكة.</span></div>
+      <div><span class="ev ev-ana">أثر تصميمي</span><b>أدلة الموقع السعودي تبقى في السعودية</b><span>ما ينتقل للمركز مؤشرات وبيانات وصفية مجمّعة؛ ونقل أي بيانات شخصية يخضع للمراجعة القانونية.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 08 INTEGRATION ===================== -->
+<section class="sec" id="integration" data-chapter="8">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">08 · INTEGRATION</div><h2>المنصة جزء من منظومة EGIC — لا جزيرة جديدة</h2><p>قيمة الحدث تتضاعف عندما يرتبط بالقسم والوردية والمركبة والمورد. طرق الربط النهائية تُحدد أثناء التقييم.</p></div>
+    <div class="hub">
+      <div class="card"><svg id="hubSvg" viewBox="0 0 720 460" role="img" aria-label="مركز التكامل مع أنظمة EGIC"></svg></div>
+      <div class="card hub-panel" id="hubPanel"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 09 BENCHMARK ===================== -->
+<section class="sec" id="benchmark" data-chapter="9">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">09 · BENCHMARK</div><h2>السوق المرجعي: أدلة، لا انطباعات</h2><p>نفصل بين أربعة أنواع من الأدلة: لا نخلط سعرًا منشورًا بصفقة، ولا دليل تنفيذ بسعر. هذه المراجع توضح اقتصاديات السوق — ولا تحدد سعر EGIC.</p></div>
+    <div class="seg ev-filter" id="evFilter" role="group"><button type="button" data-f="all" aria-pressed="true">الكل</button><button type="button" data-f="pub" aria-pressed="false">سعر منشور</button><button type="button" data-f="deal" aria-pressed="false">صفقة حقيقية</button><button type="button" data-f="dep" aria-pressed="false">دليل تنفيذ</button><button type="button" data-f="ana" aria-pressed="false">معيار تحليلي</button></div>
+    <div class="sources" id="sources"></div>
+    <div class="bench-grid">
+      <div class="card calc" id="arsaCalc"></div>
+      <div class="card" id="hwAnchors"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 10 COMMERCIAL ===================== -->
+<section class="sec commercial" id="value" data-chapter="10">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">10 · COMMERCIAL</div><h2>الآن — الهيكل التجاري</h2><p>نطاق المرجعية الحالي: <b class="ltr">EGP 4.5M – 6.0M</b></p></div>
+    <div class="pvs card" id="pvs">
+      <svg id="pvsSvg" viewBox="0 0 1000 560" role="img" aria-label="الرقم وحده مقابل الرقم مع النطاق"></svg>
+      <div class="pvs-controls"><button class="btn btn--accent" id="pvsBtn">أظهر النطاق حول الرقم</button><span class="ev ev-ana">القيمة التجارية المقترحة حاليًا — ليست عرض سعر من مورد</span></div>
+      <div class="pvs-msg" id="pvsMsg"><p class="lead-xl">الرقم وحده لا يشرح المشروع.</p><p class="lead-lg ltr accent">Scope explains value.</p></div>
+    </div>
+    <div class="sub-h"><h3>تفكيك القيمة — مخصصات تحليلية داخلية</h3><p>نطاقات تقديرية لكل مكوّن من تحليل DELMON الداخلي — ليست منسوبة لأي مورد.</p></div>
+    <div class="card alloc" id="alloc"></div>
+    <div class="sub-h"><h3>ماذا تدفعون مقابل ماذا؟</h3><p class="ltr-inline">WHAT ARE YOU ACTUALLY PAYING FOR?</p></div>
+    <div class="pay" id="pay"></div>
+  </div>
+</section>
+
+<section class="sec" id="scope" data-chapter="10">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">10 · SCOPE</div><h2>ما هو مشمول… وما يخضع للتقييم</h2><p>الوضوح هنا يحمي الطرفين: القيمة الثابتة تغطي المنصة والتنفيذ، والأجهزة والأعمال الكبيرة تُقيَّم بشفافية.</p></div>
+    <div class="seg" id="scopeSeg" role="group"><button type="button" data-s="both" aria-pressed="true">العمودان</button><button type="button" data-s="in" aria-pressed="false">المشمول</button><button type="button" data-s="out" aria-pressed="false">خاضع للتقييم</button></div>
+    <div class="scope" id="scopeCols"></div>
+  </div>
+</section>
+
+<section class="sec" id="risk" data-chapter="10">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">10 · COST DRIVERS</div><h2>ما الذي يحدد التكلفة النهائية؟</h2><p><span class="ev ev-ill">نموذج حساسية توضيحي — ليس عرض سعر</span> غيّر المحددات وشاهد أثرها.</p></div>
+    <div class="risk">
+      <div class="card risk-controls" id="riskControls"></div>
+      <div class="risk-out">
+        <div class="card" id="riskArsa"></div>
+        <div class="card" id="riskHw"></div>
+        <div class="card" id="riskMap"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 11 IMPLEMENTATION ===================== -->
+<section class="sec" id="roadmap" data-chapter="11">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">11 · IMPLEMENTATION</div><h2>اثنتا عشرة مرحلة — لكل مرحلة بوابة اعتماد</h2><p>التسلسل والاعتماديات واضحة؛ المدد التفصيلية تُثبّت في خطة المشروع بعد مرحلة التقييم.</p></div>
+    <div class="road" id="road"></div>
+  </div>
+</section>
+
+<section class="sec" id="pilot" data-chapter="11">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">11 · PILOT</div><h2>لا نعمّم قبل أن نقيس</h2><p>تجربة ميدانية على موقع مختار تقيس الأداء الحقيقي على كاميرات EGIC قبل التوسع. الأهداف الرقمية لكل مؤشر تُتفق معكم قبل البدء.</p></div>
+    <div class="pilot">
+      <div class="card"><svg id="pilotSvg" viewBox="0 0 520 300" role="img" aria-label="دورة التجربة: تجربة، تحقق، قياس، تحسين، توسع"></svg></div>
+      <div class="pilot-objs" id="pilotObjs"></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="acceptance" data-chapter="11">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker mono">11 · DEFINITION OF DONE</div><h2>متى نقول: تم؟</h2><p>معايير قبول قابلة للاختبار — اضغط على أي بند لعرض طريقة التحقق.</p></div>
+    <div class="dod">
+      <div class="card dod-meter"><svg id="dodRing" viewBox="0 0 200 200" role="img" aria-label="نسبة اكتمال معايير القبول"></svg><div class="muted small">اضغط البنود لمحاكاة الاعتماد</div></div>
+      <div class="dod-list" id="dodList"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 12 CLOSING ===================== -->
+<section class="sec closing" id="closing" data-chapter="12">
+  <div class="wrap closing-in">
+    <p class="cl cl-1">إحنا مش جايين نطلب من حضراتكم تصديق رقم.</p>
+    <p class="cl cl-2">إحنا جايين نضع المشروع كاملًا أمامكم.</p>
+    <p class="cl cl-3"><span>التقنية.</span> <span>الهندسة.</span> <span>التكامل.</span> <span>التنفيذ.</span> <span>المخاطر.</span> <span>والتكلفة.</span></p>
+    <p class="cl cl-4">وبعد ما الصورة كاملة، يبقى القرار مبني على فهم كامل.</p>
+    <p class="cl cl-5 accent">إحنا علينا السعي والأخذ بالأسباب.<br>والتوفيق في النهاية من عند الله.</p>
+    <p class="cl cl-6 ltr thanks">Thank you.</p>
+    <div class="cl cl-7 sign">
+      <span class="egic-badge"><img src="assets/egic-logo.png" alt="EGIC"></span>
+      <div class="powered powered--lg"><span class="dot"></span>POWERED BY <b>DELMON</b><span class="amp">&amp;</span><b>DEV SMART X</b></div>
+      <div class="muted mono small ltr">DELMON — Software &amp; AI Solutions · www.delmon.site · info@delmon.site</div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- overlays -->
+<div class="scrim" id="scrim"></div>
+<div class="modal" id="modal" role="dialog" aria-modal="true"><div class="modal-box"><div class="modal-h"><b id="modalTitle"></b><button class="btn btn--icon btn--ghost" id="modalClose" aria-label="إغلاق">✕</button></div><div class="modal-b" id="modalBody"></div></div></div>
+<aside class="trace" id="trace" aria-live="polite"><div class="trace-h"><b>SYSTEM TRACE</b><span class="ev ev-ill">SIMULATION</span><button class="btn btn--xs btn--ghost" id="traceClose">✕</button></div><ol id="traceList"></ol></aside>
+<div class="toasts" id="toasts"></div>
+<div class="keys" id="keys" hidden><div class="keys-box card"><div class="card-h"><div class="card-t">اختصارات لوحة المفاتيح</div><button class="btn btn--xs btn--ghost" id="keysClose">✕</button></div><div class="card-b"><dl class="kv"><dt>1 … 9, 0</dt><dd>الانتقال للفصول (1 نظرة عامة · 2 المعمارية · 3 AI · 4 BBS · 5 البوابة · 6 المرجع · 7 التجاري · 8 التنفيذ · 9 المواقع · 0 الافتتاح)</dd><dt>← / →</dt><dd>القسم التالي / السابق (يعمل مع أجهزة التحكم في العروض)</dd><dt>E / T</dt><dd>وضع تنفيذي / تقني</dd><dt>D</dt><dd>تشغيل سلسلة الحدث التوضيحية</dd><dt>F</dt><dd>ملء الشاشة</dd><dt>P</dt><dd>نسخة الطباعة</dd><dt>C</dt><dd>فتح المنصة الحية</dd><dt>Esc</dt><dd>إغلاق النوافذ</dd></dl></div></div></div>
+
+<script src="config.js"></script>
+<script src="js/arfix.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/client.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/scenes.js"></script>
+<script src="app.js"></script>
+
+<!-- ========== LIVE CAMERA INTEGRATION ========== -->
+<style>
+.live-lab { margin-top: 2rem; border: 1.5px solid rgba(69,212,140,0.3); background: rgba(7,13,10,0.85); overflow: hidden; }
+.live-lab__header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap; }
+.live-lab__title { display: flex; align-items: center; gap: 10px; font-size: 0.95rem; }
+.live-lab__dot { width: 10px; height: 10px; border-radius: 50%; background: #555; display: inline-block; flex-shrink: 0; }
+.live-lab__dot.on { background: #45D48C; box-shadow: 0 0 8px #45D48C; animation: livePulse 1.5s infinite; }
+.live-lab__dot.off { background: #666; }
+@keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.live-lab__controls { display: flex; gap: 8px; }
+.live-lab__body { display: grid; grid-template-columns: 1fr 240px; gap: 0; }
+@media (max-width: 900px) { .live-lab__body { grid-template-columns: 1fr; } }
+.live-lab__video-wrap { position: relative; background: #0a0f0d; min-height: 320px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.live-lab__placeholder { display: flex; flex-direction: column; align-items: center; gap: 12px; color: rgba(255,255,255,0.35); font-size: 0.85rem; text-align: center; padding: 2rem; }
+.live-lab__stream { width: 100%; height: auto; display: block; }
+.live-lab__status { background: rgba(15,23,25,0.9); padding: 16px; display: flex; flex-direction: column; gap: 14px; border-inline-start: 1px solid rgba(255,255,255,0.06); }
+.live-lab__metric { display: flex; align-items: baseline; gap: 8px; }
+.live-lab__metric-val { font-size: 1.8rem; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.live-lab__metric-lbl { font-size: 0.8rem; color: rgba(255,255,255,0.5); }
+.live-lab__details { font-size: 0.82rem; color: rgba(255,255,255,0.6); }
+.live-lab__safe { color: #45D48C; }
+.live-lab__viol { color: #FF4D4D; font-weight: 600; }
+.live-lab__plates { display: flex; flex-direction: column; gap: 8px; }
+.live-lab__plate-card { background: rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px; border: 1px solid rgba(69,212,140,0.2); }
+.live-lab__plate-card b { color: #45D48C; font-size: 1.1rem; letter-spacing: 2px; }
+.live-lab__plate-card small { color: rgba(255,255,255,0.45); display: block; margin-top: 2px; }
+.live-lab__metric-val.danger { color: #FF4D4D; }
+</style>
+<script>
+(function() {
+  'use strict';
+  var API = 'http://localhost:8765';
+  var ppePolling = null, carPolling = null;
+  var cameraP = null;
+
+  // One shared request, so starting both labs together opens the camera once.
+  function startCamera() {
+    if (cameraP) return cameraP;
+    cameraP = fetch(API + '/api/camera', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: 'start', source: 0})
+    }).then(function(r) {
+      if (!r.ok) throw new Error('camera');
+      return r.json();
+    }).catch(function(e) {
+      cameraP = null;
+      alert('تعذر تشغيل الكاميرا أو الاتصال بسيرفر AI.\nتأكد من تشغيل: python3 live_server.py');
+      throw e;
+    });
+    return cameraP;
+  }
+
+  function startPPE() {
+    startCamera().then(function() {
+      var img = document.getElementById('ppeStream');
+      var ph  = document.getElementById('ppePlaceholder');
+      var dot = document.getElementById('ppeDot');
+      img.src = API + '/ppe/stream';
+      img.style.display = 'block';
+      ph.style.display = 'none';
+      dot.className = 'live-lab__dot on';
+      document.getElementById('ppeStartBtn').style.display = 'none';
+      document.getElementById('ppeStopBtn').style.display = '';
+      if (ppePolling) clearInterval(ppePolling);
+      ppePolling = setInterval(pollPPE, 1500);
+    });
+  }
+
+  function stopPPE() {
+    var img = document.getElementById('ppeStream');
+    var ph  = document.getElementById('ppePlaceholder');
+    var dot = document.getElementById('ppeDot');
+    img.src = ''; img.style.display = 'none';
+    ph.style.display = '';
+    dot.className = 'live-lab__dot off';
+    document.getElementById('ppeStartBtn').style.display = '';
+    document.getElementById('ppeStopBtn').style.display = 'none';
+    if (ppePolling) { clearInterval(ppePolling); ppePolling = null; }
+  }
+
+  function pollPPE() {
+    fetch(API + '/ppe/status').then(function(r){ return r.json(); }).then(function(d) {
+      document.getElementById('ppeFps').textContent = d.fps || '—';
+      document.getElementById('ppeWorkers').textContent = d.total_persons || 0;
+      var nv = (d.violations || []).length;
+      var ve = document.getElementById('ppeViols');
+      ve.textContent = nv;
+      ve.className = 'live-lab__metric-val' + (nv > 0 ? ' danger' : '');
+      var det = document.getElementById('ppeDetails');
+      if (nv > 0) {
+        det.innerHTML = '<div class="live-lab__viol">⚠️ ' + d.violations.join(' · ') + '</div>';
+      } else if (d.total_persons > 0) {
+        det.innerHTML = '<div class="live-lab__safe">✅ جميع العمال ملتزمون</div>';
+      } else {
+        det.innerHTML = '<div class="live-lab__details">👀 لا يوجد أشخاص في الكادر</div>';
+      }
+    }).catch(function(){});
+  }
+
+  function startCar() {
+    startCamera().then(function() {
+      var img = document.getElementById('carStream');
+      var ph  = document.getElementById('carPlaceholder');
+      var dot = document.getElementById('carDot');
+      img.src = API + '/car/stream';
+      img.style.display = 'block';
+      ph.style.display = 'none';
+      dot.className = 'live-lab__dot on';
+      document.getElementById('carStartBtn').style.display = 'none';
+      document.getElementById('carStopBtn').style.display = '';
+      if (carPolling) clearInterval(carPolling);
+      carPolling = setInterval(pollCar, 1500);
+    });
+  }
+
+  function stopCar() {
+    var img = document.getElementById('carStream');
+    var ph  = document.getElementById('carPlaceholder');
+    var dot = document.getElementById('carDot');
+    img.src = ''; img.style.display = 'none';
+    ph.style.display = '';
+    dot.className = 'live-lab__dot off';
+    document.getElementById('carStartBtn').style.display = '';
+    document.getElementById('carStopBtn').style.display = 'none';
+    if (carPolling) { clearInterval(carPolling); carPolling = null; }
+  }
+
+  function pollCar() {
+    fetch(API + '/car/status').then(function(r){ return r.json(); }).then(function(d) {
+      document.getElementById('carFps').textContent = d.fps || '—';
+      var tracking = d.current_tracking || [];
+      document.getElementById('carVehicles').textContent = tracking.length;
+      var plates = d.plates || [];
+      document.getElementById('carPlates').textContent = plates.length;
+      var list = document.getElementById('carPlatesList');
+      if (plates.length === 0) {
+        list.innerHTML = '<div style="color:rgba(255,255,255,0.4);font-size:0.82rem">🚗 في انتظار مرور مركبة...</div>';
+      } else {
+        var html = '';
+        plates.forEach(function(p) {
+          html += '<div class="live-lab__plate-card"><b>' + p.digits + ' ' + p.letters + '</b><small>' + p.type + ' — ID ' + p.id + '</small></div>';
+        });
+        list.innerHTML = html;
+      }
+    }).catch(function(){});
+  }
+
+  window.EGIC_LIVE = { startPPE: startPPE, stopPPE: stopPPE, startCar: startCar, stopCar: stopCar };
+
+  // index.html?live=1 → open the camera and run both models on load.
+  if (/[?&]live=1\b/.test(location.search)) {
+    startPPE();
+    startCar();
+    var lab = document.getElementById('ppeLab');
+    if (lab) setTimeout(function() { lab.scrollIntoView({block: 'center'}); }, 800);
+  }
+})();
+</script>
+</body>
+</html>

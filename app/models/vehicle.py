@@ -5,7 +5,7 @@ from app.models.detector import YOLODetector
 from app.schemas.detection import Detection
 
 class VehicleDetector(BaseDetector):
-    def __init__(self, model_path: str = "yolov8n.pt", conf_thresh: float = 0.5):
+    def __init__(self, model_path: str = "app/weights/yolov8n_coco.pt", conf_thresh: float = 0.5):
         # We can reuse the YOLODetector but filter only vehicle classes
         self.yolo = YOLODetector(model_path=model_path, conf_thresh=conf_thresh)
         self.vehicle_classes = ["car", "truck", "bus", "motorcycle"]

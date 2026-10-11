@@ -15,7 +15,10 @@ env/
 .env
 .venv/
 *.pt
+!app/weights/*.pt
+app/weights/_incoming/
 *.onnx
+!platform/assets/models/*/model.onnx
 *.engine
 data/faces.json
 
@@ -37,3 +40,17 @@ Thumbs.db
 .vscode/
 .idea/
 *.log
+
+# EGIC platform runtime data (evidence snapshots, live journal)
+platform/data/evidence/*
+!platform/data/evidence/README.txt
+platform/data/journal.ndjson
+platform/.vercel
+
+# ANPR training / benchmark data (scripts/anpr_*.py)
+data/anpr/
+
+# local archive of replaced code / models (kept on disk, not in git)
+_archive/
+# legacy ASP.NET backend — replaced by platform/server (kept locally)
+backend/

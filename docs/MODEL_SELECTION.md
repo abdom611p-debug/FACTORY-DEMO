@@ -1,61 +1,90 @@
-# Model Selection
+# اختيار الموديلات — Model Selection
 
-This document details the selected AI models for the Phase 1 AI Engine demo.
+كل موديل هنا اختير **بقياس فعلي** على صور مستقلة، مش بالأرقام اللي أصحابه كاتبينها. التقييم اتعمل على CPU (لابتوب) بتاريخ 11 أكتوبر 2026.
 
-## Person & Vehicle Detection
-- **Model Name**: YOLOv8n (Nano) / YOLOv8s (Small)
-- **Source**: Ultralytics
-- **URL**: [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics)
-- **Task**: Object Detection (COCO dataset - Person, Car, Truck, Bus, Motorcycle, etc.)
-- **License**: AGPL-3.0
-- **Commercial Usability**: **DEMO-ONLY** for closed-source. Requires an Enterprise license from Ultralytics for commercial use if the product is not open-sourced under AGPL.
-- **Production Replacement Candidate**: YOLO-NAS (Deci AI) or RT-DETR (Apache-2.0).
-- **Input Requirements**: RGB Image (typically 640x640)
-- **Output Format**: Bounding boxes `[x1, y1, x2, y2]`, confidence scores, class IDs.
-- **CPU Performance Expectation**: Very Fast (Nano model is ~1-5ms per frame on CPU).
-- **GPU Performance Expectation**: Ultra Fast.
-- **Model Size**: ~6 MB.
-- **Accuracy Considerations**: Excellent for general detection; struggles with tiny objects but sufficient for factory floors.
-- **Why it was selected**: State-of-the-art performance, ease of integration via the `ultralytics` pip package, built-in tracking capabilities.
-- **Alternatives considered**: YOLOv5 (same license), SSD MobileNet (slower/less accurate but Apache 2.0).
+| الوظيفة | الموديل المختار | الملف | أين يعمل | الرخصة |
+|---|---|---|---|---|
+| معدات الوقاية (خوذة · نظارة · سترة …) | YOLOv8s — SH17 (17 فئة) | `app/weights/ppe_sh17_yolov8s.pt` · `platform/assets/models/ppe_s` | السيرفر + المتصفح | AGPL-3.0 (أوزان) · بيانات SH17 CC BY-NC-SA 4.0 |
+| الحريق والدخان | YOLOv8n — D-Fire | `app/weights/fire_smoke_dfire_yolov8n.pt` · `platform/assets/models/fire_n/model.onnx` | السيرفر + المتصفح (ONNX) | AGPL-3.0 |
+| التدخين (سيجارة · فيب) | Ensemble: YOLOv8 (cigarette/vape/smoke/person) + YOLO11m (cigarette) | `app/weights/smoking_*.pt` · `platform/assets/models/smoking_n/model.onnx` | السيرفر (الاتنين) · المتصفح (YOLOv8) | AGPL-3.0 |
+| السلوك (استغاثة · سقوط · محطة · انحناء) | YOLO26n-pose | `app/weights/pose_yolo26n.pt` · `platform/assets/models/pose_n` | السيرفر + المتصفح | AGPL-3.0 |
+| اللوحات المصرية | YOLO11n plate + **YOLO11s OCR مُدرَّب لـ EGIC** (+ ensemble على السيرفر) | `app/weights/anpr_*.pt` · `platform/assets/models/plate_eg, ocr_egic` | السيرفر + المتصفح | AGPL-3.0 (أوزان) · بيانات EALPR للبحث |
+| الأشخاص والمركبات + تتبع | YOLOv8n COCO + ByteTrack | `app/weights/yolov8n_coco.pt` | السيرفر | AGPL-3.0 |
+| الوجه | FaceNet (InceptionResnetV1) — سيرفر · face-api — متصفح | — | الاتنين | MIT (كود) |
 
-## PPE Detection
-- **Model Name**: yolov8m-protective-equipment-detection (or similar fine-tuned YOLO)
-- **Source**: Hugging Face / keremberke
-- **URL**: [HuggingFace PPE Model](https://huggingface.co/keremberke/yolov8m-protective-equipment-detection)
-- **Task**: PPE Detection (Helmet, Vest, Gloves, etc.)
-- **License**: Usually CC BY-NC 4.0 or similar (Non-Commercial).
-- **Commercial Usability**: **DEMO-ONLY**. 
-- **Production Replacement Candidate**: Train a custom YOLOv8 model using an open-source dataset (e.g., Roboflow PPE datasets) under a permissive license.
-- **Input Requirements**: RGB Image
-- **Output Format**: Bounding boxes, confidence, class IDs.
-- **Performance Expectation**: Fast.
-- **Why it was selected**: Readily available on Hugging Face for quick demonstration of PPE policies.
-- **Alternatives considered**: Building a cascade classifier, which is too slow and inaccurate.
+> **الترخيص:** أوزان Ultralytics (AGPL-3.0) مناسبة للعرض والتقييم. للإنتاج التجاري: ترخيص Ultralytics Enterprise أو إعادة التدريب على بيانات EGIC بنموذج برخصة مفتوحة (RT-DETR / YOLO-NAS).
 
-## Face Recognition
-- **Model Name**: Inception Resnet V1 (FaceNet) / MTCNN for alignment
-- **Source**: facenet-pytorch
-- **URL**: [facenet-pytorch](https://github.com/timesler/facenet-pytorch)
-- **Task**: Face Detection, Alignment, and Embedding Generation
-- **License**: MIT (for the code/framework). The training dataset (VGGFace2) has its own restrictions, but generally acceptable for many uses compared to InsightFace.
-- **Commercial Usability**: Acceptable for DEMO. 
-- **Production Replacement Candidate**: Commercial API (AWS Rekognition, Azure Face) or a legally cleared proprietary model. (Note: InsightFace pretrained weights are strictly non-commercial).
-- **Input Requirements**: RGB Image / Cropped Face
-- **Output Format**: 512-dimensional embedding vector.
-- **Performance Expectation**: Moderate (MTCNN is somewhat slow on CPU, but acceptable for demo).
-- **Why it was selected**: Fully open-source framework, easy to integrate via PyTorch.
-- **Alternatives considered**: InsightFace (rejected due to strict non-commercial license on pre-trained weights), DeepFace (a wrapper, but relies on underlying models).
+---
 
-## Tracking
-- **Model Name**: ByteTrack
-- **Source**: Ultralytics YOLOv8 builtin tracker
-- **URL**: [ByteTrack](https://github.com/ifzhang/ByteTrack)
-- **Task**: Multi-Object Tracking (MOT)
-- **License**: MIT
-- **Commercial Usability**: Yes, standard MIT license.
-- **Input Requirements**: Detections from YOLO
-- **Output Format**: Track IDs assigned to bounding boxes.
-- **Performance Expectation**: Extremely fast (data association only, no heavy CNN).
-- **Why it was selected**: Integrated directly into Ultralytics YOLOv8, saving integration time and offering SOTA tracking.
-- **Alternatives considered**: DeepSORT (heavier, requires a ReID model).
+## 1) الحريق والدخان — 3 مرشحين
+
+**بيانات الاختبار:**
+- (أ) 203 صورة من D-Fire test: منهم 118 صورة نضيفة، و58 فيها حريق، و75 فيها دخان.
+- (ب) 120 صورة حريق من كاميرات مراقبة (CCTV)، ومعاها 54 صورة نضيفة: لقطات عمال وعربيات.
+
+| الموديل | حريق P / R | دخان P / R | إنذار كاذب (D-Fire) | حريق CCTV | إنذار كاذب (عمال/عربيات) | زمن |
+|---|---|---|---|---|---|---|
+| **YOLOv8n D-Fire** ✅ | **0.97 / 1.00** | **0.94 / 0.91** | **1 / 118** | **105 / 120** | **1 / 54** | **37ms** |
+| YOLO26-S (SalahALHaismawi) | 0.75 / 0.93 | 0.56 / 0.27 | 31 / 118 | 68 / 120 | 0 / 54 | 64ms |
+| YOLO26-S fine-tuned (Beehzod) | 0.71 / 0.95 | 0.54 / 0.33 | 39 / 118 | 103 / 120 | 8 / 54 | 61ms |
+
+(الثقة 0.25. ملحوظة: موديل D-Fire متدرّب على بيانات من نفس النوع، فعشان كده اختبار CCTV المستقل هو الحَكَم الأساسي.)
+
+**منطق الإنذار:** فريم واحد عمره ما يضرب إنذار.
+- **الحريق:** لازم يظهر في 3 فريمات من آخر 5، ويكون ظاهر في الفريم الحالي كمان. الخطورة CRITICAL.
+- **الدخان:** لازم يظهر في 4 فريمات من آخر 6. الخطورة HIGH.
+- بعد أي إنذار فيه cooldown لمدة 60 ثانية لكل كاميرا.
+
+## 2) التدخين — 7 مرشحين
+
+**بيانات الاختبار:** 229 صورة مستقلة (108 تدخين و121 من غير تدخين)، ومعاهم 23 لقطة لعمال قدام الكاميرا من غير سجاير.
+
+| الموديل | أفضل F1 | P / R | إنذار كاذب (عمال) | زمن |
+|---|---|---|---|---|
+| **Ensemble (متوسط الاتنين)** ✅ سيرفر | **0.88** | **0.93 / 0.85** | **0 / 23** | ~200ms |
+| YOLOv8 cigarette·vape (cadilak) ✅ متصفح | 0.85 | 0.92 / 0.79 | 0 / 23 | 32ms |
+| YOLO11m (Enos-123) | 0.83 | 0.87 / 0.79 | 0 / 23 | 172ms |
+| YOLO11m (Beehzod best) | 0.77 | 0.78 / 0.77 | 1 / 23 | 196ms |
+| YOLO11m (Beehzod finetuned) | 0.74 | 0.88 / 0.63 | 3 / 23 | 190ms |
+| RANGER (construction) | 0.74 | 0.80 / 0.69 | 0 / 23 | 33ms |
+| YOLO26s (basant18) | 0.62 | 0.89 / 0.48 | 0 / 23 | 102ms |
+| YOLO11m "99% mAP" (Beehzod y11m) | 0.71 | 0.59 / 0.88 | **23 / 23** ❌ | 214ms |
+
+الدرس اللي طلعنا بيه: الموديل الأتقل مش دايمًا الأدق. والموديل اللي كاتب عن نفسه mAP 99% طلع بيدّي إنذار غلط على كل صورة جرّبناه عليها.
+
+## 3) اللوحات المصرية (ANPR)
+
+**بيانات الاختبار:**
+- (أ) 300 لوحة من EALPR، اتسابوا برّه التدريب خالص. المقياس هو **القراءة الكاملة الصح**: كل الأرقام وكل الحروف.
+- (ب) 23 صورة عربية مصرية مستقلة لاختبار كشف مكان اللوحة.
+
+| كشف مكان اللوحة | لقى اللوحة في |
+|---|---|
+| YOLOv8n (ACLPR) القديم | 16 / 23 ❌ |
+| **YOLO11n (Elsayed)** ✅ | **23 / 23** · 43ms |
+
+| قراءة الحروف | قراءة كاملة صح | الأرقام | الحروف | زمن |
+|---|---|---|---|---|
+| YOLOv8n (ACLPR) القديم | 37.3% | 77.3% | 43.0% | 34ms |
+| YOLO11n (Elsayed) | 74.0% | 94.3% | 75.7% | 32ms |
+| YOLOv8s (Ahmed482) | 75.0% | 86.3% | 82.3% | 77ms |
+| الاتنين مع بعض | 82.7% | 95.3% | 85.3% | 110ms |
+| **YOLO11s مدرّب لـ EGIC** ✅ متصفح | **92.3%** | **96.7%** | **94.7%** | **27ms** |
+| **مدرّب EGIC ×2 + Ahmed482 + Elsayed** ✅ سيرفر | **92.7%** | 97.0% | 95.0% | ~90ms |
+
+**التدريب:** اتعمل على 1533 لوحة من EALPR، و150 تانيين للتحقق. الـ 300 بتوع الاختبار ما اتستخدموش في التدريب خالص. اتدرّب 57 دورة على RTX 3050 في 10 دقايق.
+- إعادة التدريب: `scripts/anpr_build_dataset.py` وبعده `scripts/anpr_train_ocr.py`.
+- القياس: `scripts/anpr_eval.py`.
+- الخطوة الجاية: ندرّب على لقطات بوابات EGIC الحقيقية، بإضاءتها وزواياها.
+
+**لوحات دول تانية:** مفيش موديل مفتوح المصدر بيقرا لوحات كل الدول وكمان الحروف العربية. لو المطلوب لوحات من كل العالم فيه اختيارين، والاتنين على السحابة وبتكلفة:
+- موديل رؤية كبير زي Claude بيقرا أي لوحة بأي لغة.
+- خدمة مدفوعة زي Plate Recognizer.
+
+ممكن نضيف أي واحد فيهم كطبقة تأكيد للوحات الصعبة بس.
+
+## 4) الأمان
+
+قبل ما يتشغّل أي ملف `.pt`، اتفحص بأداة `picklescan` واتراجعت الـ pickle globals بتاعته.
+- ملف واحد بس كان فيه `__builtin__.getattr` مشبوه، وهو `yolo11m_car_plate_ocr.pt`، فاستبعدناه. وموديلات اللوحات الجديدة عدّت الفحص.
+- الملفات اللي اخترناها مفيهاش غير classes من torch و ultralytics.

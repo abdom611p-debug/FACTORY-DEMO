@@ -1,0 +1,8 @@
+server
+launcher
+data
+*.bat
+*.sh
+Dockerfile
+railway.json
+.dockerignore

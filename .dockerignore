@@ -1,0 +1,14 @@
+.venv
+.git
+platform
+_archive
+frontend
+backend
+docs
+tests
+scripts
+data
+app/weights/_incoming
+**/__pycache__
+*.pyc
+.env

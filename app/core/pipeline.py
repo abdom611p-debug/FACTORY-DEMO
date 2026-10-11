@@ -26,9 +26,9 @@ class VideoSource:
             self.cap.release()
 
 class Pipeline:
-    def __init__(self, source_path: str):
+    def __init__(self, source_path: str, inference: InferenceService = None):
         self.source = VideoSource(source_path)
-        self.inference = InferenceService()
+        self.inference = inference or InferenceService()
         self.is_running = False
         
     def initialize(self):
@@ -56,8 +56,8 @@ class Pipeline:
                 camera_id=camera_id
             )
             
-            # Process
-            detections, events = self.inference.process_frame(image, camera_id)
+            # Process (off the event loop — inference is CPU bound)
+            detections, events = await asyncio.to_thread(self.inference.process_frame, image, camera_id)
             frame.detections = detections
             frame.events = events
             

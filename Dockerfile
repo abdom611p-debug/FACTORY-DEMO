@@ -1,27 +1,29 @@
+# EGIC AI Engine (Python · FastAPI) — CPU image for Railway / any Docker host
 FROM python:3.12-slim
 
-# Install system dependencies for OpenCV and other C++ extensions
-RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    gcc \
-    python3-dev \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    YOLO_CONFIG_DIR=/tmp/ultralytics
+
+# OpenCV (headless) runtime libs
+RUN apt-get update && apt-get install -y --no-install-recommends libglib2.0-0 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /srv
 
-# Copy requirements
+# CPU-only PyTorch first (the default CUDA wheels are ~2 GB larger)
+RUN pip install torch==2.14.1 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
 COPY requirements.txt .
+# ultralytics pulls opencv-python (needs X11 libs); keep only the headless build
+RUN pip install -r requirements.txt && pip uninstall -y opencv-python && pip install --no-deps --force-reinstall opencv-python-headless==5.0.0.93
 
-# Install Python dependencies
-# We use --no-cache-dir to keep the image smaller
-RUN pip install --no-cache-dir -r requirements.txt
+COPY app ./app
 
-# Copy the rest of the application
-COPY . .
+# non-root runtime user
+RUN useradd -m -u 10001 egic && mkdir -p /srv/data && chown -R egic /srv/data /tmp
+USER egic
 
-# Expose the API port
+# Railway injects PORT; default 8000 locally
 EXPOSE 8000
-
-# Run the FastAPI server
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]

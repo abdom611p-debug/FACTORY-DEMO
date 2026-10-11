@@ -1,0 +1,17 @@
+{
+  "name": "EGIC · AI Safety & Smart Access Platform",
+  "short_name": "EGIC Platform",
+  "description": "EGIC AI Safety & Smart Access — POWERED BY DELMON & DEV SMART X",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "console.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#070D0A",
+  "theme_color": "#070D0A",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

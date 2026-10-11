@@ -1,0 +1,5 @@
+data/evidence/*.jpg
+data/journal.ndjson
+launcher
+*.bat
+.vercel

@@ -79,6 +79,11 @@ class EventPublisher:
                 
     async def _send_to_backend(self, event: Dict[str, Any]):
         if not self.backend_url:
+            return
+        await self._post_backend(event)
+
+    async def _post_backend(self, event: Dict[str, Any]):
+        if not self.backend_url:
             logger.warning("BACKEND_API_URL not configured. Skipping event publish.")
             return
 
@@ -102,3 +107,38 @@ class EventPublisher:
             logger.error(f"HTTP Error {exc.response.status_code} while sending event: {exc.response.text}")
         except Exception as e:
             logger.error(f"Unexpected error publishing event: {e}")
+
+
+# AI event type (engine) → EGIC platform event type
+EGIC_TYPES = {
+    "NO_HELMET_DETECTED": "NO_HELMET", "NO_GLASSES_DETECTED": "NO_GLASSES", "NO_VEST_DETECTED": "NO_VEST",
+    "UNAUTHORIZED_ZONE_ENTRY": "RESTRICTED_ZONE", "FIRE_DETECTED": "FIRE_DETECTED", "SMOKE_DETECTED": "SMOKE_DETECTED",
+    "SMOKING_DETECTED": "SMOKING_DETECTED", "FALL_DETECTED": "FALL", "SOS_DETECTED": "SOS_GESTURE",
+}
+
+
+class EgicPublisher:
+    """Mirrors engine events to the EGIC platform (/api/v1/events) so they appear on its live dashboard."""
+
+    def __init__(self, platform_url: str):
+        self.url = platform_url.rstrip("/") + "/api/v1/events" if platform_url else ""
+        self.client = httpx.AsyncClient(timeout=5.0)
+
+    async def publish_events(self, events: List[Dict[str, Any]]):
+        if not self.url:
+            return
+        for e in events:
+            etype = EGIC_TYPES.get(e.get("event_type"))
+            if not etype:
+                continue
+            ev = e.get("evidence") or {}
+            body = {"type": etype, "cameraId": e.get("camera_id"), "conf": e.get("confidence") or 0.9,
+                    "source": "ai-engine", "sev": ev.get("severity"), "workerId": e.get("worker_id"),
+                    "evidence": {"kind": "engine", "model": "EGIC AI Engine", **{k: v for k, v in ev.items() if k != "severity"}}}
+            try:
+                await self.client.post(self.url, json=body)
+            except Exception as exc:
+                logger.error(f"EGIC platform publish failed: {exc}")
+
+    async def stop(self):
+        await self.client.aclose()

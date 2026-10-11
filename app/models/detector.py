@@ -6,7 +6,7 @@ from app.models.base import BaseDetector
 from app.schemas.detection import Detection, BoundingBox
 
 class YOLODetector(BaseDetector):
-    def __init__(self, model_path: str = "yolov8n.pt", conf_thresh: float = 0.5):
+    def __init__(self, model_path: str = "app/weights/yolov8n_coco.pt", conf_thresh: float = 0.5):
         self.model_path = model_path
         self.conf_thresh = conf_thresh
         self.model = None

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EGIC · منصة السلامة والوصول الذكي</title>
+<meta name="description" content="EGIC AI Safety & Smart Access Platform — Operations Console. POWERED BY DELMON & DEV SMART X">
+<meta name="theme-color" content="#070D0A">
+<link rel="icon" type="image/png" href="assets/egic-favicon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="console.css">
+<script>try { var t = localStorage.getItem('egic-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}</script>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side" id="side" aria-label="القائمة الرئيسية">
+    <div class="side-brand">
+      <div class="egic-badge"><img src="assets/egic-logo.png" alt="EGIC"></div>
+      <div>
+        <div class="egic-word">EGIC</div>
+        <small>AI SAFETY · SMART ACCESS</small>
+      </div>
+    </div>
+    <nav class="side-nav" id="nav"></nav>
+    <div class="side-foot">
+      <div class="user"><div class="av">HSE</div><div><b>مدير السلامة</b><span>HSE Admin · صلاحيات كاملة</span></div></div>
+      <div class="powered"><span class="dot"></span>POWERED BY <b>DELMON</b><span class="amp">&amp;</span><b>DEV SMART X</b></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="status" id="status" aria-live="polite"></div>
+    <header class="top">
+      <button class="btn btn--icon btn--ghost menu-btn" id="menuBtn" aria-label="القائمة"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <select class="select site-select" id="siteSel" aria-label="اختيار الموقع"></select>
+      <span class="armed hide-sm"><span class="dot dot--on"></span>النظام يعمل · ARMED</span>
+      <span class="grow"></span>
+      <button class="btn btn--sm" id="demoBtn" title="تشغيل سلسلة الحدث التوضيحية">⚡ سلسلة حدث</button>
+      <button class="btn btn--icon btn--ghost" id="themeBtn" aria-label="تبديل الوضع الفاتح/الداكن"></button>
+      <button class="btn btn--icon btn--ghost" id="fsBtn" aria-label="ملء الشاشة"></button>
+      <button class="btn btn--icon bell" id="bellBtn" aria-label="التنبيهات"><span class="count" id="bellCount">0</span></button>
+      <a class="btn btn--sm hide-sm" href="index.html">العرض التنفيذي ↗</a>
+    </header>
+    <div class="demo-ribbon" id="ribbon"><span><b>بيئة عرض</b> · البيانات التشغيلية محاكاة للتوضيح، أما الكشف المباشر بالكاميرا وقراءة اللوحات فيعمل بنماذج ذكاء اصطناعي حقيقية.</span><span class="tag-demo">DEMO ENVIRONMENT</span></div>
+    <section class="view" id="view" tabindex="-1"></section>
+  </main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-modal="true" role="dialog"><div class="drawer-h"><div id="drawerTitle"></div><button class="btn btn--icon btn--ghost" id="drawerClose" aria-label="إغلاق">✕</button></div><div class="drawer-b" id="drawerBody"></div></aside>
+<div class="modal" id="modal" role="dialog" aria-modal="true"><div class="modal-box"><div class="modal-h"><b id="modalTitle"></b><button class="btn btn--icon btn--ghost" id="modalClose" aria-label="إغلاق">✕</button></div><div class="modal-b" id="modalBody"></div></div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="hz-alarm" id="hzAlarm" role="alertdialog" aria-labelledby="hzTitle" aria-live="assertive">
+  <div class="hz-box">
+    <div class="hz-head"><span class="hz-ic" id="hzIc">🔥</span><div><b id="hzTitle">إنذار حريق</b><span id="hzSub"></span></div></div>
+    <img id="hzImg" alt="">
+    <div class="hz-meta" id="hzMeta"></div>
+    <div class="hz-actions"><button class="btn btn--accent" id="hzAck">استلام الإنذار وإيقاف الصفارة</button><button class="btn" id="hzView">عرض الحدث</button></div>
+  </div>
+</div>
+<div class="sos" id="sos"><div class="sos-in"><img id="sosImg" alt=""><div><b id="sosTitle">🚨 إشارة استغاثة</b><span id="sosSub"></span></div><button class="btn btn--sm" id="sosAck">استلام</button></div></div>
+
+<script src="config.js"></script>
+<script src="js/arfix.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/client.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/scenes.js"></script>
+<script src="js/console.js"></script>
+<script src="js/console2.js"></script>
+<script src="js/live.js"></script>
+</body>
+</html>
