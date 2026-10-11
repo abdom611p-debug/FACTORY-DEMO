@@ -13,8 +13,11 @@
  *        PORT=9000 node server/server.js
  *        HOST=0.0.0.0 node server/server.js   (to open it from another device on the same network)
  *
- * Phone camera: the console shows a QR → phone.html streams the phone camera as JPEG frames to
- *   POST /api/v1/cam/:session/frame, and the console reads them back as MJPEG (/api/v1/cam/:session/mjpeg).
+ * Phone camera: the console shows a QR → phone.html opens the camera and connects to the console with
+ *   WebRTC (peer-to-peer video, ~30 fps, low latency). This server only relays the SDP offer/answer:
+ *   POST|GET /api/v1/cam/:session/offer · POST|GET /api/v1/cam/:session/answer.
+ *   Fallback when WebRTC can't connect: JPEG frames → POST /api/v1/cam/:session/frame, read back as
+ *   MJPEG (/api/v1/cam/:session/mjpeg).
  *   Phones only open the camera over HTTPS: locally put a cert in .certs/ (key.pem + cert.pem, see
  *   scripts/make-local-cert.sh) and the server also listens on HTTPS_PORT (default 8443).
  *
@@ -128,6 +131,21 @@ function pushFrame(c, buf) {
 }
 async function camApi(req, res, id, action) {
   if (!CAM_ID.test(id)) return send(res, 400, { error: 'bad_session' });
+  // WebRTC signalling (non-trickle: each side posts one SDP with its ICE candidates already gathered)
+  if (action === 'offer' || action === 'answer') {
+    const c = camSession(id);
+    if (req.method === 'POST') {
+      let j;
+      try { j = JSON.parse((await readRaw(req, 256 * 1024)).toString('utf8')); } catch (e) { return send(res, 400, { error: 'bad_json' }); }
+      if (!j || typeof j.sdp !== 'string' || !/^(offer|answer)$/.test(j.type)) return send(res, 400, { error: 'bad_sdp' });
+      if (action === 'offer') { c.offer = { type: j.type, sdp: j.sdp, ts: Date.now() }; c.answer = null; log(C.c + '● PHONE CAM' + C.x, 'WebRTC offer', C.dim + id + C.x); }
+      else c.answer = { type: j.type, sdp: j.sdp, ts: Date.now() };
+      c.ts = c.ts || 0; c.born = Date.now();
+      return send(res, 200, { ok: true });
+    }
+    const v = action === 'offer' ? c.offer : c.answer;
+    return v ? send(res, 200, v) : send(res, 204, '');
+  }
   if (action === 'frame' && req.method === 'POST') {
     let buf;
     try { buf = await readRaw(req, 4 * 1024 * 1024); } catch (e) { return send(res, 413, { error: e.message }); }
@@ -153,7 +171,7 @@ async function camApi(req, res, id, action) {
     return send(res, 200, c.frame, { 'Content-Type': 'image/jpeg' });
   }
   const c = cams.get(id);
-  return send(res, 200, { session: id, connected: !!(c && c.frame && Date.now() - c.ts < 5000), lastFrameAgoMs: c && c.ts ? Date.now() - c.ts : null, fps: c ? c.fps : 0, viewers: c ? c.viewers.size : 0 });
+  return send(res, 200, { session: id, connected: !!(c && c.frame && Date.now() - c.ts < 5000), lastFrameAgoMs: c && c.ts ? Date.now() - c.ts : null, fps: c ? c.fps : 0, viewers: c ? c.viewers.size : 0, offer: !!(c && c.offer), answered: !!(c && c.answer) });
 }
 setInterval(() => { const now = Date.now(); for (const [id, c] of cams) if (now - Math.max(c.ts, c.born) > 15 * 60 * 1000) { for (const r of c.viewers) try { r.end(); } catch (e) { } cams.delete(id); } }, 60 * 1000);
 
@@ -186,7 +204,7 @@ function readBody(req, limit) {
 
 async function api(req, res, pathname, query) {
   const t0 = Date.now();
-  const cm = /^\/api\/v1\/cam\/([^/]+)(?:\/(frame|mjpeg))?$/.exec(pathname);
+  const cm = /^\/api\/v1\/cam\/([^/]+)(?:\/(frame|mjpeg|offer|answer))?$/.exec(pathname);
   if (cm) return camApi(req, res, cm[1], cm[2] || 'status');
   if (pathname === '/api/v1/netinfo') return send(res, 200, { lan: lanAddresses(), port: PORT, httpsPort: httpsServer ? HTTPS_PORT : null });
   if (pathname === '/api/v1/stream') {
@@ -241,8 +259,16 @@ function serveStatic(req, res, pathname) {
   });
 }
 
+// config.js from the environment on cloud hosts (Railway): EGIC_AI_URL, EGIC_ICE_SERVERS (JSON, e.g. a TURN server)
+function runtimeConfig() {
+  if (!process.env.EGIC_AI_URL && !process.env.EGIC_ICE_SERVERS) return null;
+  const cfg = { apiBase: '', aiUrl: String(process.env.EGIC_AI_URL || '').replace(/\/+$/, '') };
+  try { if (process.env.EGIC_ICE_SERVERS) cfg.iceServers = JSON.parse(process.env.EGIC_ICE_SERVERS); } catch (e) { console.error('EGIC_ICE_SERVERS is not valid JSON'); }
+  return '/*! generated from environment */\nwindow.EGIC_CONFIG = ' + JSON.stringify(cfg) + ';\n';
+}
 function handler(req, res) {
   const u = url.parse(req.url, true); // eslint-disable-line n/no-deprecated-api
+  if (u.pathname === '/config.js') { const js = runtimeConfig(); if (js) return send(res, 200, js, Object.assign({ 'Content-Type': 'text/javascript; charset=utf-8' }, CORS)); }
   if (req.method === 'OPTIONS') return send(res, 204, '');
   if (u.pathname.indexOf('/api/') === 0) return api(req, res, u.pathname, u.query).catch((e) => send(res, 500, { error: String(e && e.message || e) }));
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method_not_allowed' });
