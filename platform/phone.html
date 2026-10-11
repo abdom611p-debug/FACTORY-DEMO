@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EGIC · كاميرا الموبايل</title>
+<meta name="theme-color" content="#070D0A">
+<link rel="icon" type="image/png" href="assets/egic-favicon.png">
+<link rel="stylesheet" href="styles.css">
+<style>
+  :root { --pc-bg: #050907; --pc-card: rgba(12, 20, 16, .86); --pc-line: rgba(255, 255, 255, .12); --pc-ok: #2ba160; --pc-warn: #f79224; --pc-bad: #e0473b; }
+  html, body { height: 100%; margin: 0; background: var(--pc-bg); color: #fff; overflow: hidden; }
+  body { font-family: var(--font-ui, "IBM Plex Sans Arabic", system-ui, sans-serif); }
+  .pc { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto; }
+  .pc-top { display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: linear-gradient(#000c, #0000); z-index: 2; }
+  .pc-top img { width: 34px; height: 34px; border-radius: 9px; background: #fff; padding: 3px; }
+  .pc-top b { display: block; font-size: 15px; }
+  .pc-top small { display: block; font-size: 11.5px; opacity: .75; }
+  .pill { margin-inline-start: auto; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; font-size: 12px; background: var(--pc-card); border: 1px solid var(--pc-line); white-space: nowrap; }
+  .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--pc-warn); }
+  .pill.ok i { background: var(--pc-ok); box-shadow: 0 0 0 4px rgba(43, 161, 96, .25); }
+  .pill.bad i { background: var(--pc-bad); }
+  video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+  .pc-bottom { z-index: 2; padding: 12px 16px calc(14px + env(safe-area-inset-bottom)); display: grid; gap: 10px; background: linear-gradient(#0000, #000d 40%); }
+  .alert { display: none; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #5a0f0f; border: 1px solid rgba(255, 90, 90, .8); font-weight: 700; }
+  .alert.on { display: flex; animation: pcFlash .8s steps(2, jump-none) 6; }
+  .alert.amber { background: #5a3a0a; border-color: rgba(255, 178, 60, .8); }
+  .alert.info { background: #0c3a24; border-color: rgba(43, 161, 96, .8); }
+  .alert span { font-size: 26px; }
+  .alert small { display: block; font-weight: 400; opacity: .85; font-size: 12px; }
+  @keyframes pcFlash { to { filter: brightness(1.6); } }
+  .row { display: flex; gap: 8px; }
+  .row button { flex: 1; min-height: 48px; border-radius: 14px; border: 1px solid var(--pc-line); background: var(--pc-card); color: #fff; font: inherit; font-size: 15px; }
+  .row button.primary { background: var(--pc-warn); color: #1a0e00; border-color: transparent; font-weight: 700; }
+  .meta { font-size: 11.5px; opacity: .7; text-align: center; font-family: var(--font-mono, monospace); }
+  .start { position: fixed; inset: 0; z-index: 3; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 30%, #12301f, var(--pc-bg)); text-align: center; }
+  .start.hidden { display: none; }
+  .start h1 { font-size: 22px; margin: 14px 0 6px; }
+  .start p { opacity: .8; font-size: 14px; line-height: 1.7; margin: 0 0 18px; }
+  .start button { min-height: 54px; width: min(320px, 100%); border-radius: 16px; border: 0; background: var(--pc-warn); color: #1a0e00; font: inherit; font-size: 17px; font-weight: 800; }
+  .start .err { color: #ff9a8f; font-size: 13px; margin-top: 14px; }
+</style>
+</head>
+<body>
+<video id="v" playsinline muted autoplay></video>
+<div class="pc">
+  <div class="pc-top">
+    <img src="assets/egic-logo.png" alt="EGIC">
+    <div><b>كاميرا الموبايل</b><small id="sess">EGIC · AI Safety</small></div>
+    <span class="pill" id="pill"><i></i><span id="pillT">جارٍ الاتصال…</span></span>
+  </div>
+  <div></div>
+  <div class="pc-bottom">
+    <div class="alert" id="alert"><span id="alIc">🔥</span><div><div id="alT"></div><small id="alS"></small></div></div>
+    <div class="row">
+      <button type="button" id="flip">🔄 تبديل الكاميرا</button>
+      <button type="button" id="pause" class="primary">⏸ إيقاف مؤقت</button>
+    </div>
+    <div class="meta" id="meta" dir="ltr">—</div>
+  </div>
+</div>
+<div class="start" id="start">
+  <div>
+    <img src="assets/egic-logo.png" alt="EGIC" style="width:72px;height:72px;border-radius:18px;background:#fff;padding:6px">
+    <h1>اربط الموبايل بالمنصة</h1>
+    <p>هيتم استخدام كاميرا الموبايل كمصدر للذكاء الاصطناعي في المنصة (حريق · تدخين · معدات الوقاية · اللوحات). الصورة بتتبعت لخادم EGIC بس.</p>
+    <button type="button" id="go">📷 تشغيل الكاميرا</button>
+    <div class="err" id="err"></div>
+  </div>
+</div>
+<script src="config.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var q = new URLSearchParams(location.search);
+  var session = (q.get('s') || '').replace(/[^a-z0-9]/gi, '');
+  var API = ((window.EGIC_CONFIG && window.EGIC_CONFIG.apiBase) || '').replace(/\/$/, '');
+  var st = { facing: 'environment', stream: null, paused: false, sent: 0, fpsT: performance.now(), fps: 0, kb: 0, fail: 0, lastOk: 0 };
+  var video = $('v'), canvas = document.createElement('canvas');
+  $('sess').textContent = 'جلسة ' + (session ? session.slice(0, 6).toUpperCase() : '—') + ' · EGIC AI Safety';
+  if (!session) { $('err').textContent = 'رابط غير صالح — امسح الكود من شاشة المنصة مرة أخرى.'; $('go').disabled = true; }
+
+  function pill(state, text) { var p = $('pill'); p.className = 'pill' + (state ? ' ' + state : ''); $('pillT').textContent = text; }
+
+  function openCam() {
+    if (st.stream) st.stream.getTracks().forEach(function (t) { t.stop(); });
+    return navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: st.facing }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } } }).then(function (s) {
+      st.stream = s; video.srcObject = s; return video.play();
+    });
+  }
+
+  // one frame in flight at a time: the upload speed sets the frame rate (no queue build-up on slow networks)
+  function pump() {
+    if (st.paused || !video.videoWidth) return setTimeout(pump, 200);
+    var w = Math.min(1280, video.videoWidth), h = Math.round(video.videoHeight * w / video.videoWidth);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+    canvas.toBlob(function (blob) {
+      if (!blob) return setTimeout(pump, 200);
+      fetch(API + '/api/v1/cam/' + session + '/frame', { method: 'POST', body: blob, headers: { 'Content-Type': 'image/jpeg' } }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (j) {
+        st.sent++; st.fail = 0; st.lastOk = Date.now(); st.kb = Math.round(blob.size / 1024);
+        var now = performance.now(); if (now - st.fpsT > 1000) { st.fps = Math.round(st.sent * 1000 / (now - st.fpsT)); st.sent = 0; st.fpsT = now; }
+        pill(j.viewers ? 'ok' : '', j.viewers ? 'متصل بالمنصة' : 'بانتظار شاشة المنصة');
+        $('meta').textContent = w + '×' + h + ' · ' + st.fps + ' FPS · ' + st.kb + ' KB';
+        setTimeout(pump, 60);
+      }).catch(function () {
+        st.fail++; pill('bad', 'تعذر الإرسال — إعادة المحاولة');
+        setTimeout(pump, Math.min(3000, 300 * st.fail));
+      });
+    }, 'image/jpeg', 0.78);
+  }
+
+  // detections from the platform → banner + vibration on the phone
+  var HZ = { FIRE_DETECTED: ['🔥', 'إنذار حريق', ''], SMOKE_DETECTED: ['💨', 'إنذار دخان', 'amber'], SMOKING_DETECTED: ['🚬', 'تدخين', 'amber'], SOS_GESTURE: ['🆘', 'إشارة استغاثة', ''], FALL: ['⚠️', 'سقوط شخص', ''] };
+  var hideT = null;
+  function banner(ic, title, sub, cls, vib) {
+    var a = $('alert'); a.className = 'alert on' + (cls ? ' ' + cls : '');
+    $('alIc').textContent = ic; $('alT').textContent = title; $('alS').textContent = sub || '';
+    try { if (vib && navigator.vibrate) navigator.vibrate(vib); } catch (e) { }
+    clearTimeout(hideT); hideT = setTimeout(function () { a.className = 'alert'; }, 9000);
+  }
+  function listen() {
+    try {
+      var es = new EventSource(API + '/api/v1/stream');
+      es.addEventListener('event', function (ev) {
+        var e = JSON.parse(ev.data); if (String(e.source || '').indexOf('live') !== 0) return;
+        var hz = HZ[e.type];
+        if (hz) banner(hz[0], hz[1] + ' · ' + Math.round((e.conf || 0.9) * 100) + '%', e.workerName || e.id, hz[2], hz[2] ? [200, 100, 200] : [600, 200, 600, 200, 600]);
+        else banner('🦺', e.typeAr || e.type, e.workerName || e.id, 'amber', [150]);
+      });
+      es.addEventListener('gate', function (ev) {
+        var g = JSON.parse(ev.data); if (String(g.source || '').indexOf('live') !== 0) return;
+        var dec = { AUTHORIZED: 'مصرّح', VISITOR: 'زائر', UNAUTHORIZED: 'غير مصرّح', BLACKLIST: 'قائمة سوداء', UNREADABLE: 'غير مقروءة' }[g.decision] || g.decision || '';
+        banner('🚗', 'لوحة: ' + g.plate, dec + ' · ' + Math.round((g.conf || 0) * 100) + '%', g.decision === 'AUTHORIZED' ? 'info' : 'amber', [120]);
+      });
+    } catch (e) { }
+  }
+
+  function wake() { try { if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(function () { }); } catch (e) { } }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) wake(); });
+
+  $('go').addEventListener('click', function () {
+    if (!window.isSecureContext) { $('err').textContent = 'الكاميرا تحتاج اتصال آمن (https). افتح الرابط من الكود مباشرة.'; return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('err').textContent = 'المتصفح لا يدعم الكاميرا.'; return; }
+    openCam().then(function () { $('start').classList.add('hidden'); wake(); listen(); pump(); }).catch(function (e) {
+      $('err').textContent = e && e.name === 'NotAllowedError' ? 'اسمح للمتصفح باستخدام الكاميرا ثم أعد المحاولة.' : 'تعذر فتح الكاميرا: ' + (e && e.message || e);
+    });
+  });
+  $('flip').addEventListener('click', function () { st.facing = st.facing === 'environment' ? 'user' : 'environment'; openCam().catch(function () { }); });
+  $('pause').addEventListener('click', function () { st.paused = !st.paused; this.textContent = st.paused ? '▶ استئناف' : '⏸ إيقاف مؤقت'; pill(st.paused ? '' : 'ok', st.paused ? 'متوقف مؤقتًا' : 'متصل بالمنصة'); });
+})();
+</script>
+</body>
+</html>

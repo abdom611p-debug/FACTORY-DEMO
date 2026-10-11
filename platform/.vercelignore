@@ -6,3 +6,5 @@ data
 Dockerfile
 railway.json
 .dockerignore
+.certs
+scripts/make-local-cert.sh

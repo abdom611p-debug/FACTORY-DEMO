@@ -76,6 +76,78 @@
   }
   function titanDetect(src, d) { return serverDetect('/ppe/detect?conf=' + TITAN_CONF, src, d); }
 
+  /* ------------------------------------------------------------------ */
+  /* Phone camera pairing: QR → phone.html streams JPEG → MJPEG back here   */
+  /* ------------------------------------------------------------------ */
+  function newSession() { var a = new Uint8Array(12); (window.crypto || window.msCrypto).getRandomValues(a); return Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
+  // Phones open the camera only on https: use this page's origin when it is https (Vercel / Railway),
+  // otherwise the local server's HTTPS port on the LAN address (scripts/make-local-cert.sh)
+  function phonePageBase() {
+    var here = location.href.replace(/[#?].*$/, '').replace(/[^/]*$/, '');
+    if (location.protocol === 'https:') return Promise.resolve({ base: here, secure: true });
+    return fetch(API.state.base + '/api/v1/netinfo', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (n) {
+      var ip = (n.lan || [])[0] || location.hostname;
+      if (n.httpsPort) return { base: 'https://' + ip + ':' + n.httpsPort + '/', secure: true, local: true };
+      return { base: 'http://' + ip + ':' + n.port + '/', secure: false };
+    });
+  }
+  function pairPhone(onReady) {
+    if (API.state.mode !== 'server') { U.toast('كاميرا الموبايل تحتاج سيرفر المنصة', 'شغّل: node server/server.js أو افتح النسخة المنشورة.', { kind: 'critical', ms: 8000 }); return; }
+    var sid = newSession(), poll = null, done = false;
+    var qrBox = h('div', { style: { background: '#fff', borderRadius: '14px', padding: '12px', width: 'min(280px, 70vw)', margin: '0 auto' } });
+    var link = h('a', { class: 'mono', target: '_blank', rel: 'noopener', style: { fontSize: '11.5px', wordBreak: 'break-all', textAlign: 'center', display: 'block' } });
+    var status = h('div', { class: 'verdict' }, h('span', { text: 'بانتظار اتصال الموبايل…' }), h('span', { class: 'spinner', style: { width: '16px', height: '16px' } }));
+    var note = h('div', { class: 'muted', style: { fontSize: '12px', lineHeight: '1.7' } });
+    U.openModal('📱 استخدم كاميرا الموبايل', h('div', { style: { display: 'grid', gap: '12px' } },
+      h('div', { class: 'muted', style: { fontSize: '13px' }, text: 'امسح الكود بكاميرا الموبايل ← اضغط «تشغيل الكاميرا» ← المنصة هتتحول لكاميرا الموبايل لوحدها.' }),
+      qrBox, link, status, note));
+    var mb = U.$('#modalBody');
+    mb.__onClose = function () { done = true; clearInterval(poll); };
+    Promise.all([loadScript('assets/vendor/qrcode.js'), phonePageBase()]).then(function (r) {
+      var b = r[1], url = b.base + 'phone.html?s=' + sid;
+      var qr = window.qrcode(0, 'M'); qr.addData(url); qr.make();
+      qrBox.innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+      link.href = url; link.textContent = url;
+      if (b.local) note.textContent = 'شبكة محلية: الموبايل لازم يكون على نفس الواي فاي. أول مرة هيظهر تحذير أمان (شهادة محلية) ← «خيارات متقدمة» ← «متابعة».';
+      if (!b.secure) note.textContent = '⚠️ الموبايل لن يفتح الكاميرا بدون https. شغّل: bash scripts/make-local-cert.sh ثم أعد تشغيل السيرفر، أو استخدم النسخة المنشورة.';
+      poll = setInterval(function () {
+        fetch(API.state.base + '/api/v1/cam/' + sid, { cache: 'no-store' }).then(function (x) { return x.json(); }).then(function (j) {
+          if (done || !j.connected) return;
+          done = true; clearInterval(poll); U.closeModal();
+          U.toast('تم توصيل كاميرا الموبايل', 'المنصة الآن تحلل صورة الموبايل لحظيًا', { kind: 'live', ms: 5000 });
+          onReady(API.state.base + '/api/v1/cam/' + sid + '/mjpeg', sid);
+        }).catch(function () { });
+      }, 1000);
+    }).catch(function (e) { status.firstChild.textContent = 'تعذر إنشاء الكود: ' + e.message; });
+  }
+  // TF.js / ONNX can't read pixels from a multipart (MJPEG) <img> → copy the current frame to a canvas each tick
+  function phoneFrame(st, el) {
+    var c = st.phoneCanvas || (st.phoneCanvas = document.createElement('canvas'));
+    var w = el.naturalWidth, hh = el.naturalHeight;
+    if (!w || !hh) return null;
+    if (c.width !== w || c.height !== hh) { c.width = w; c.height = hh; }
+    c.getContext('2d').drawImage(el, 0, 0, w, hh);
+    return c;
+  }
+  // attach the MJPEG relay to a (visually hidden, still decoding) <img> and resolve once the first frame is in
+  function phoneSource(el, mjpegUrl, sid, st, onLost) {
+    el.crossOrigin = 'anonymous';
+    el.src = mjpegUrl + '?t=' + Date.now();
+    var t0 = Date.now();
+    var ready = new Promise(function (res, rej) {
+      (function wait() { if (el.naturalWidth) return res(); if (Date.now() - t0 > 15000) return rej(new Error('لم يصل أي إطار من الموبايل')); setTimeout(wait, 100); })();
+    });
+    clearInterval(st.phoneWatch); var lostAt = 0;
+    st.phoneWatch = setInterval(function () {
+      if (st.srcKind !== 'phone') { clearInterval(st.phoneWatch); return; }
+      fetch(API.state.base + '/api/v1/cam/' + sid, { cache: 'no-store' }).then(function (x) { return x.json(); }).then(function (j) {
+        if (j.connected) { lostAt = 0; st.phoneFps = j.fps; return; }
+        if (!lostAt) { lostAt = Date.now(); onLost(); }
+      }).catch(function () { });
+    }, 3000);
+    return ready;
+  }
+
   /* face database (local only — never leaves the device) */
   function faceDB() { try { return JSON.parse(localStorage.getItem('egic-faces') || '{}'); } catch (e) { return {}; } }
   function saveFaceDB(db) { try { localStorage.setItem('egic-faces', JSON.stringify(db)); } catch (e) { } S.faceIndex = db; }
@@ -198,20 +270,21 @@
     var canvas = h('canvas', { width: 1280, height: 720 });
     var video = h('video', { playsinline: true, muted: true, autoplay: true });
     var img = h('img', { alt: '', style: { display: 'none' } });
+    var phoneImg = h('img', { alt: '', style: { position: 'absolute', width: '1px', height: '1px', opacity: 0, pointerEvents: 'none' } });
     var hudL = h('div', { class: 'l' }), hudR = h('div', { class: 'r' });
     var empty = h('div', { class: 'lab-empty' }, h('div', null,
       h('div', { style: { width: '64px', height: '64px', margin: '0 auto', borderRadius: '18px', display: 'grid', placeItems: 'center', background: 'rgba(43,161,96,.16)', color: 'var(--green-hi)' } }, U.icon('live')),
       h('h3', { text: 'ابدأ الكشف المباشر' }),
       h('p', { text: 'قف أمام الكاميرا. سيحدد النظام الخوذة ونظارة الوقاية والسترة العاكسة، وإن نقص أي منها يلتقط صورة ويسجلها في ملف العامل.' }),
-      h('div', { class: 'row' }, h('button', { class: 'btn btn--accent', onclick: function () { startCamera(); } }, U.icon('play'), 'تشغيل الكاميرا'), h('label', { class: 'btn' }, U.icon('upload'), 'صورة / فيديو', h('input', { type: 'file', accept: 'image/*,video/*', style: { display: 'none' }, onchange: function (e) { if (e.target.files[0]) startFile(e.target.files[0]); } })))));
+      h('div', { class: 'row' }, h('button', { class: 'btn btn--accent', onclick: function () { startCamera(); } }, U.icon('play'), 'تشغيل الكاميرا'), h('button', { class: 'btn', onclick: function () { pairPhone(startPhone); } }, '📱 كاميرا الموبايل'), h('label', { class: 'btn' }, U.icon('upload'), 'صورة / فيديو', h('input', { type: 'file', accept: 'image/*,video/*', style: { display: 'none' }, onchange: function (e) { if (e.target.files[0]) startFile(e.target.files[0]); } })))));
     var loading = h('div', { class: 'lab-loading hidden' }, h('div', { class: 'box' }, h('div', { class: 'spinner' }), h('div', { style: { marginTop: '14px', fontWeight: 600 }, id: 'ldT', text: 'تحميل النماذج…' }), h('div', { class: 'bar' }, h('i', { id: 'ldBar' })), h('div', { class: 'muted mono', style: { fontSize: '11px' }, id: 'ldS', text: '' })));
-    var stage = h('div', { class: 'lab-stage' }, canvas, video, img, h('div', { class: 'lab-hud' }, hudL, hudR), h('div', { class: 'lab-brand' }, h('div', { class: 'powered' }, h('span', { class: 'dot' }), 'POWERED BY ', h('b', { text: 'DELMON' }), h('span', { class: 'amp', text: '&' }), h('b', { text: 'DEV SMART X' }))), empty, loading);
+    var stage = h('div', { class: 'lab-stage' }, canvas, video, img, phoneImg, h('div', { class: 'lab-hud' }, hudL, hudR), h('div', { class: 'lab-brand' }, h('div', { class: 'powered' }, h('span', { class: 'dot' }), 'POWERED BY ', h('b', { text: 'DELMON' }), h('span', { class: 'amp', text: '&' }), h('b', { text: 'DEV SMART X' }))), empty, loading);
     var left = h('div', null, stage);
     var camSel = h('select', { class: 'select', style: { minWidth: '180px' } }, h('option', { value: '', text: 'الكاميرا الافتراضية' }));
     listCams().then(function (ds) { ds.forEach(function (d, i) { camSel.appendChild(h('option', { value: d.deviceId, text: d.label || ('كاميرا ' + (i + 1)) })); }); });
     var stopBtn = h('button', { class: 'btn', onclick: stop }, U.icon('stop'), 'إيقاف');
     var controls = h('div', { class: 'lab-controls' },
-      h('button', { class: 'btn btn--accent', onclick: function () { startCamera(); } }, U.icon('play'), 'تشغيل الكاميرا'), stopBtn, camSel,
+      h('button', { class: 'btn btn--accent', onclick: function () { startCamera(); } }, U.icon('play'), 'تشغيل الكاميرا'), h('button', { class: 'btn', onclick: function () { pairPhone(startPhone); } }, '📱 كاميرا الموبايل'), stopBtn, camSel,
       h('label', { class: 'btn' }, U.icon('upload'), 'صورة / فيديو', h('input', { type: 'file', accept: 'image/*,video/*', style: { display: 'none' }, onchange: function (e) { if (e.target.files[0]) startFile(e.target.files[0]); } })),
       h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: LAB.mirror, onchange: function (e) { LAB.mirror = e.target.checked; saveLab(); } }), 'عكس الصورة'),
       h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: LAB.sound, onchange: function (e) { LAB.sound = e.target.checked; saveLab(); } }), 'تنبيه صوتي'));
@@ -354,6 +427,15 @@
         U.toast('تعذر فتح الكاميرا', camErrMsg(e), { kind: 'critical', ms: 9000 });
       });
     }
+    function startPhone(mjpegUrl, sid) {
+      stopSources();
+      empty.classList.add('hidden');
+      prepareModels();
+      st.srcKind = 'phone';
+      phoneSource(phoneImg, mjpegUrl, sid, st, function () { U.toast('انقطع اتصال كاميرا الموبايل', 'تأكد أن صفحة الكاميرا مفتوحة على الموبايل', { kind: 'critical', ms: 7000 }); })
+        .then(function () { if (st.srcKind !== 'phone') return; st.src = phoneFrame(st, phoneImg); st.running = true; st.tracker = null; loop(); })
+        .catch(function (e) { st.srcKind = null; empty.classList.remove('hidden'); U.toast('تعذر استقبال صورة الموبايل', e.message, { kind: 'critical' }); });
+    }
     function startFile(file) {
       stopSources();
       empty.classList.add('hidden');
@@ -367,13 +449,14 @@
         img.src = st.url;
       }
     }
-    function stopSources() { st.running = false; stopStream(st.stream); st.stream = null; try { video.pause(); } catch (e) { } video.removeAttribute('src'); video.srcObject = null; if (st.url) { URL.revokeObjectURL(st.url); st.url = null; } st.srcKind = null; st.last = null; st.pose = null; }
+    function stopSources() { if (st.srcKind === 'phone') { phoneImg.removeAttribute('src'); clearInterval(st.phoneWatch); } st.running = false; stopStream(st.stream); st.stream = null; try { video.pause(); } catch (e) { } video.removeAttribute('src'); video.srcObject = null; if (st.url) { URL.revokeObjectURL(st.url); st.url = null; } st.srcKind = null; st.last = null; st.pose = null; }
     function stop() { stopSources(); empty.classList.remove('hidden'); var g = canvas.getContext('2d'); g.fillStyle = '#020403'; g.fillRect(0, 0, canvas.width, canvas.height); }
 
     // ---------- main loop ----------
     function srcDims() { var s = st.src; return s ? { w: s.videoWidth || s.naturalWidth || s.width, h: s.videoHeight || s.naturalHeight || s.height } : { w: 0, h: 0 }; }
     function loop() {
       if (!st.running || st.destroyed) return;
+      if (st.srcKind === 'phone') st.src = phoneFrame(st, phoneImg) || st.src;
       var d = srcDims();
       if (d.w && d.h) {
         if (canvas.width !== d.w || canvas.height !== d.h) { canvas.width = d.w; canvas.height = d.h; }
@@ -615,7 +698,7 @@
       if (st.faces && st.faces.length && LAB.idMode === 'auto') st.faces.forEach(function (f) { var b = mir ? mirrorBox(f.box, d.w) : f.box; g.strokeStyle = 'rgba(247,146,36,.85)'; g.lineWidth = 1.5; g.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1); });
       // HUD chips
       clear(hudL); clear(hudR);
-      hudL.appendChild(h('span', { class: 'hud-chip rec', text: st.srcKind === 'camera' ? 'LIVE · P01-CAM-LIVE' : st.srcKind === 'video' ? 'VIDEO FILE' : 'IMAGE' }));
+      hudL.appendChild(h('span', { class: 'hud-chip rec', text: st.srcKind === 'camera' ? 'LIVE · P01-CAM-LIVE' : st.srcKind === 'phone' ? 'LIVE · 📱 MOBILE CAM' + (st.phoneFps ? ' · ' + st.phoneFps + ' FPS' : '') : st.srcKind === 'video' ? 'VIDEO FILE' : 'IMAGE' }));
       hudL.appendChild(h('span', { class: 'hud-chip', text: 'نقطة فحص الوقاية · المصنع 01' }));
       hudR.appendChild(h('span', { class: 'hud-chip', text: (st.fps ? st.fps + ' FPS · ' : '') + st.ms + ' ms' }));
       hudR.appendChild(h('span', { class: 'hud-chip', text: (ppeEng === 'titan' ? 'EGIC AI SERVER' : faceapi ? faceapi.tf.getBackend().toUpperCase() : '') + ' · ON-DEVICE' }));
@@ -729,10 +812,11 @@
     if (fileProtocolNotice(v)) return;
     var g = h('div', { class: 'lab' }); v.appendChild(g);
     var canvas = h('canvas', { width: 1280, height: 720 }), video = h('video', { playsinline: true, muted: true, autoplay: true, style: { position: 'absolute', width: '1px', height: '1px', opacity: 0 } }), img = h('img', { alt: '', style: { display: 'none' } });
+    var phoneImg = h('img', { alt: '', style: { position: 'absolute', width: '1px', height: '1px', opacity: 0, pointerEvents: 'none' } });
     var hudL = h('div', { class: 'l' }), hudR = h('div', { class: 'r' });
     var loading = h('div', { class: 'lab-loading hidden' }, h('div', { class: 'box' }, h('div', { class: 'spinner' }), h('div', { style: { marginTop: '14px', fontWeight: 600 }, class: 'ldT', text: 'تحميل النماذج…' }), h('div', { class: 'bar' }, h('i', { class: 'ldBar' })), h('div', { class: 'muted mono ldS', style: { fontSize: '11px' } })));
     var empty = h('div', { class: 'lab-empty' }, h('div', null, h('div', { style: { width: '64px', height: '64px', margin: '0 auto', borderRadius: '18px', display: 'grid', placeItems: 'center', background: 'rgba(247,146,36,.14)', color: 'var(--orange-hi)' } }, U.icon('anpr')), h('h3', { text: 'اختر مصدرًا للقراءة' }), h('p', { text: 'صور نموذجية لسيارات مصرية، أو ارفع صورة/فيديو من بوابة المصنع، أو وجّه الكاميرا نحو لوحة سيارة.' })));
-    var stage = h('div', { class: 'anpr-stage' }, canvas, video, img, h('div', { class: 'lab-hud' }, hudL, hudR), h('div', { class: 'lab-brand' }, h('div', { class: 'powered' }, h('span', { class: 'dot' }), 'POWERED BY ', h('b', { text: 'DELMON' }), h('span', { class: 'amp', text: '&' }), h('b', { text: 'DEV SMART X' }))), empty, loading);
+    var stage = h('div', { class: 'anpr-stage' }, canvas, video, img, phoneImg, h('div', { class: 'lab-hud' }, hudL, hudR), h('div', { class: 'lab-brand' }, h('div', { class: 'powered' }, h('span', { class: 'dot' }), 'POWERED BY ', h('b', { text: 'DELMON' }), h('span', { class: 'amp', text: '&' }), h('b', { text: 'DEV SMART X' }))), empty, loading);
     var left = h('div', null, stage);
     var samples = h('div', { class: 'samples' });
     for (var i = 1; i <= 7; i++) (function (n) { samples.appendChild(h('button', { type: 'button', title: 'صورة نموذجية ' + n, onclick: function () { startUrl('assets/samples/anpr/eg-car-0' + n + '.jpg', 'image'); } }, h('img', { src: 'assets/samples/anpr/eg-car-0' + n + '.jpg', alt: 'سيارة مصرية ' + n, loading: 'lazy' }))); })(i);
@@ -743,6 +827,7 @@
     fetch('assets/models/ocr_eg_s/model.onnx', { method: 'HEAD', cache: 'no-store' }).then(function (r) { if (!r.ok) throw 0; }).catch(function () { preciseLbl.style.display = 'none'; if (ANPR.precise) { ANPR.precise = false; saveAnpr(); } });
     left.appendChild(h('div', { class: 'lab-controls' },
       h('button', { class: 'btn btn--accent', onclick: startCamera }, U.icon('play'), 'تشغيل الكاميرا'),
+      h('button', { class: 'btn', onclick: function () { pairPhone(startPhone); } }, '📱 كاميرا الموبايل'),
       h('button', { class: 'btn', onclick: stop }, U.icon('stop'), 'إيقاف'),
       h('label', { class: 'btn' }, U.icon('upload'), 'صورة / فيديو', h('input', { type: 'file', accept: 'image/*,video/*', style: { display: 'none' }, onchange: function (e) { var f = e.target.files[0]; if (f) startUrl(URL.createObjectURL(f), /^video/.test(f.type) ? 'video' : 'image', true); } })),
       h('span', { class: 'muted', style: { fontSize: '12px' }, text: 'الاتجاه:' }), U.seg([['AUTO', 'تلقائي'], ['IN', 'دخول'], ['OUT', 'خروج']], ANPR.lane, function (x) { ANPR.lane = x; saveAnpr(); }),
@@ -791,17 +876,26 @@
       if (kind === 'video') { video.srcObject = null; video.src = url; video.loop = true; video.play().then(function () { st.src = video; st.srcKind = 'video'; st.running = true; loop(); }); }
       else { img.onload = function () { st.src = img; st.srcKind = 'image'; st.running = true; st.imageDone = false; loop(); }; img.src = url; }
     }
+    function startPhone(mjpegUrl, sid) {
+      stopSources(); empty.classList.add('hidden'); prepare();
+      st.gen = (st.gen || 0) + 1; st.voter = null; st.lastRead = null; st.srcKind = 'phone';
+      clear(readBox).appendChild(h('div', { class: 'muted', text: 'وجّه كاميرا الموبايل على اللوحة وثبّتها ثانية…' }));
+      phoneSource(phoneImg, mjpegUrl, sid, st, function () { U.toast('انقطع اتصال كاميرا الموبايل', 'تأكد أن صفحة الكاميرا مفتوحة على الموبايل', { kind: 'critical', ms: 7000 }); })
+        .then(function () { if (st.srcKind !== 'phone') return; st.src = phoneFrame(st, phoneImg); st.running = true; loop(); })
+        .catch(function (e) { st.srcKind = null; empty.classList.remove('hidden'); U.toast('تعذر استقبال صورة الموبايل', e.message, { kind: 'critical' }); });
+    }
     function startCamera() {
       stopSources(); empty.classList.add('hidden'); prepare();
       st.gen = (st.gen || 0) + 1;
       openCam().then(function (s) { if (st.destroyed) { stopStream(s); return; } st.stream = s; video.srcObject = s; return video.play().then(function () { st.src = video; st.srcKind = 'camera'; st.running = true; loop(); }); }).catch(function (e) { empty.classList.remove('hidden'); U.toast('تعذر فتح الكاميرا', camErrMsg(e), { kind: 'critical', ms: 9000 }); });
     }
-    function stopSources() { st.running = false; stopStream(st.stream); st.stream = null; try { video.pause(); } catch (e) { } video.removeAttribute('src'); video.srcObject = null; if (st.url) { URL.revokeObjectURL(st.url); st.url = null; } st.srcKind = null; st.lastPlateBox = null; }
+    function stopSources() { if (st.srcKind === 'phone') { phoneImg.removeAttribute('src'); clearInterval(st.phoneWatch); } st.running = false; stopStream(st.stream); st.stream = null; try { video.pause(); } catch (e) { } video.removeAttribute('src'); video.srcObject = null; if (st.url) { URL.revokeObjectURL(st.url); st.url = null; } st.srcKind = null; st.lastPlateBox = null; }
     function stop() { stopSources(); empty.classList.remove('hidden'); }
 
     function loop() {
       if (!st.running || st.destroyed) return;
-      var s = st.src, W = s.videoWidth || s.naturalWidth, H = s.videoHeight || s.naturalHeight;
+      if (st.srcKind === 'phone') st.src = phoneFrame(st, phoneImg) || st.src;
+      var s = st.src, W = s.videoWidth || s.naturalWidth || s.width, H = s.videoHeight || s.naturalHeight || s.height;
       if (W && H) {
         if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
         var g2 = canvas.getContext('2d'); g2.drawImage(s, 0, 0, W, H);
@@ -907,7 +1001,7 @@
         label(g4, p.x1, p.y1 - 4, t, 'rgba(150,70,0,.95)', Math.max(16, Math.round(W / 40)));
       }
       clear(hudL); clear(hudR);
-      hudL.appendChild(h('span', { class: 'hud-chip rec', text: st.srcKind === 'camera' ? 'LIVE · P01-ANPR-LIVE' : st.srcKind === 'video' ? 'VIDEO · GATE' : 'IMAGE' }));
+      hudL.appendChild(h('span', { class: 'hud-chip rec', text: st.srcKind === 'camera' ? 'LIVE · P01-ANPR-LIVE' : st.srcKind === 'phone' ? 'LIVE · 📱 MOBILE CAM' + (st.phoneFps ? ' · ' + st.phoneFps + ' FPS' : '') : st.srcKind === 'video' ? 'VIDEO · GATE' : 'IMAGE' }));
       hudL.appendChild(h('span', { class: 'hud-chip', text: 'البوابة الرئيسية · المصنع 01' }));
       hudR.appendChild(h('span', { class: 'hud-chip', text: st.ms + ' ms / قراءة' }));
     }

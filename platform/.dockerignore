@@ -3,3 +3,4 @@ data/journal.ndjson
 launcher
 *.bat
 .vercel
+.certs

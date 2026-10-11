@@ -37,3 +37,4 @@ frontend/dist/
 frontend/.vite/
 *.user
 *.suo
+platform/.certs/

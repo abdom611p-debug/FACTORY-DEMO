@@ -13,6 +13,11 @@
  *        PORT=9000 node server/server.js
  *        HOST=0.0.0.0 node server/server.js   (to open it from another device on the same network)
  *
+ * Phone camera: the console shows a QR → phone.html streams the phone camera as JPEG frames to
+ *   POST /api/v1/cam/:session/frame, and the console reads them back as MJPEG (/api/v1/cam/:session/mjpeg).
+ *   Phones only open the camera over HTTPS: locally put a cert in .certs/ (key.pem + cert.pem, see
+ *   scripts/make-local-cert.sh) and the server also listens on HTTPS_PORT (default 8443).
+ *
  * Cloud (Railway): PORT is injected → binds 0.0.0.0. CORS_ORIGIN restricts which web origins may call the API
  * (default '*', so the UI can be hosted on Vercel while this server runs on Railway). DATA_DIR moves evidence +
  * journal to a mounted volume so they survive redeploys.
@@ -20,6 +25,7 @@
 'use strict';
 
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -96,6 +102,64 @@ engine.on((msg) => {
 setInterval(() => { for (const res of clients) { try { res.write(': ping\n\n'); } catch (e) { clients.delete(res); } } }, 15000);
 
 /* ------------------------------------------------------------------ */
+/* Phone camera relay (JPEG in → MJPEG out)                              */
+/* ------------------------------------------------------------------ */
+const cams = new Map(); // session → { frame, ts, seq, viewers:Set, fps, n, fpsT, ua }
+const CAM_ID = /^[a-z0-9]{8,40}$/i;
+function camSession(id) {
+  let c = cams.get(id);
+  if (!c) { c = { frame: null, ts: 0, seq: 0, viewers: new Set(), fps: 0, n: 0, fpsT: Date.now(), born: Date.now() }; cams.set(id, c); }
+  return c;
+}
+function readRaw(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = [];
+    req.on('data', (b) => { size += b.length; if (size > limit) { reject(new Error('frame_too_large')); req.destroy(); } else chunks.push(b); });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+function pushFrame(c, buf) {
+  const head = Buffer.from('--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ' + buf.length + '\r\n\r\n');
+  for (const res of c.viewers) {
+    if (res.writableLength > 2 * 1024 * 1024) continue; // slow viewer: drop this frame
+    try { res.write(head); res.write(buf); res.write('\r\n'); } catch (e) { c.viewers.delete(res); }
+  }
+}
+async function camApi(req, res, id, action) {
+  if (!CAM_ID.test(id)) return send(res, 400, { error: 'bad_session' });
+  if (action === 'frame' && req.method === 'POST') {
+    let buf;
+    try { buf = await readRaw(req, 4 * 1024 * 1024); } catch (e) { return send(res, 413, { error: e.message }); }
+    if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return send(res, 415, { error: 'jpeg_only' });
+    const c = camSession(id), first = !c.frame;
+    c.frame = buf; c.ts = Date.now(); c.seq++; c.n++;
+    if (c.ts - c.fpsT >= 1000) { c.fps = Math.round(c.n * 1000 / (c.ts - c.fpsT)); c.n = 0; c.fpsT = c.ts; }
+    pushFrame(c, buf);
+    if (first) { log(C.c + '● PHONE CAM' + C.x, 'connected', C.dim + id + C.x); engine.emit('phonecam', { session: id, state: 'connected', ts: c.ts }); }
+    return send(res, 200, { ok: true, seq: c.seq, viewers: c.viewers.size });
+  }
+  if (action === 'mjpeg') {
+    const c = camSession(id);
+    res.writeHead(200, Object.assign({ 'Content-Type': 'multipart/x-mixed-replace; boundary=frame', 'Cache-Control': 'no-cache, no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' }, CORS));
+    c.viewers.add(res);
+    if (c.frame) pushFrame({ viewers: new Set([res]) }, c.frame);
+    req.on('close', () => c.viewers.delete(res));
+    return;
+  }
+  if (action === 'frame' && req.method === 'GET') {
+    const c = cams.get(id);
+    if (!c || !c.frame) return send(res, 404, { error: 'no_frame' });
+    return send(res, 200, c.frame, { 'Content-Type': 'image/jpeg' });
+  }
+  const c = cams.get(id);
+  return send(res, 200, { session: id, connected: !!(c && c.frame && Date.now() - c.ts < 5000), lastFrameAgoMs: c && c.ts ? Date.now() - c.ts : null, fps: c ? c.fps : 0, viewers: c ? c.viewers.size : 0 });
+}
+setInterval(() => { const now = Date.now(); for (const [id, c] of cams) if (now - Math.max(c.ts, c.born) > 15 * 60 * 1000) { for (const r of c.viewers) try { r.end(); } catch (e) { } cams.delete(id); } }, 60 * 1000);
+
+function lanAddresses() { return Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address); }
+
+/* ------------------------------------------------------------------ */
 /* HTTP                                                                 */
 /* ------------------------------------------------------------------ */
 const MIME = {
@@ -122,6 +186,9 @@ function readBody(req, limit) {
 
 async function api(req, res, pathname, query) {
   const t0 = Date.now();
+  const cm = /^\/api\/v1\/cam\/([^/]+)(?:\/(frame|mjpeg))?$/.exec(pathname);
+  if (cm) return camApi(req, res, cm[1], cm[2] || 'status');
+  if (pathname === '/api/v1/netinfo') return send(res, 200, { lan: lanAddresses(), port: PORT, httpsPort: httpsServer ? HTTPS_PORT : null });
   if (pathname === '/api/v1/stream') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' }, CORS));
     res.write('retry: 2000\n');
@@ -163,7 +230,7 @@ function serveStatic(req, res, pathname) {
   if (rel === '/console' || rel === '/console/') rel = '/console.html';
   const base = rel.indexOf('/data/') === 0 ? DATA : ROOT;
   const file = path.normalize(path.join(base, base === DATA ? rel.slice('/data'.length) : rel));
-  if (!file.startsWith(base) || file.includes(path.sep + '.') || file.startsWith(path.join(ROOT, 'server')) || file === JOURNAL) return send(res, 403, { error: 'forbidden' });
+  if (!file.startsWith(base) || file.includes(path.sep + '.') || file.startsWith(path.join(ROOT, 'server')) || file === JOURNAL || file.startsWith(CERT_DIR)) return send(res, 403, { error: 'forbidden' });
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) return send(res, 404, '<h1>404</h1>', { 'Content-Type': 'text/html; charset=utf-8' });
     const ext = path.extname(file).toLowerCase();
@@ -174,13 +241,22 @@ function serveStatic(req, res, pathname) {
   });
 }
 
-const server = http.createServer((req, res) => {
+function handler(req, res) {
   const u = url.parse(req.url, true); // eslint-disable-line n/no-deprecated-api
   if (req.method === 'OPTIONS') return send(res, 204, '');
   if (u.pathname.indexOf('/api/') === 0) return api(req, res, u.pathname, u.query).catch((e) => send(res, 500, { error: String(e && e.message || e) }));
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method_not_allowed' });
   serveStatic(req, res, u.pathname);
-});
+}
+const server = http.createServer(handler);
+const HTTPS_PORT = +process.env.HTTPS_PORT || 8443;
+const CERT_DIR = path.join(ROOT, '.certs');
+let httpsServer = null;
+if (!process.env.RAILWAY_ENVIRONMENT && fs.existsSync(path.join(CERT_DIR, 'key.pem')) && fs.existsSync(path.join(CERT_DIR, 'cert.pem'))) {
+  httpsServer = https.createServer({ key: fs.readFileSync(path.join(CERT_DIR, 'key.pem')), cert: fs.readFileSync(path.join(CERT_DIR, 'cert.pem')) }, handler);
+  httpsServer.on('error', (e) => { console.error(C.r + '  HTTPS ' + HTTPS_PORT + ': ' + e.message + C.x); httpsServer = null; });
+  httpsServer.listen(HTTPS_PORT, process.env.HOST || '0.0.0.0');
+}
 
 const replayed = replayJournal();
 engine.start();
@@ -195,6 +271,7 @@ server.listen(PORT, HOST, () => {
   console.log('  ● Live console         ' + C.c + 'http://localhost:' + PORT + '/console.html' + C.x);
   if (HOST === '0.0.0.0') ifaces.forEach((ip) => console.log('  ● On your network      ' + C.c + 'http://' + ip + ':' + PORT + '/' + C.x));
   console.log('  ● API                  ' + C.dim + '/api/v1/*   ·   live stream /api/v1/stream' + C.x);
+  if (httpsServer) lanAddresses().forEach((ip) => console.log('  ● Phone camera (HTTPS) ' + C.c + 'https://' + ip + ':' + HTTPS_PORT + '/phone.html' + C.x));
   console.log('  ● Engine               ' + C.g + 'ONLINE' + C.x + C.dim + '  (' + engine.events.length + ' events · ' + engine.gateLog.length + ' gate reads · ' + engine.cameras.length + ' cameras' + (replayed ? ' · ' + replayed + ' live records restored' : '') + ')' + C.x);
   console.log('');
   console.log(C.dim + '  Demo environment — simulated data is clearly labelled. Press Ctrl+C to stop.' + C.x);
