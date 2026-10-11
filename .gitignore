@@ -1,56 +1,31 @@
-# Node / Frontend
-node_modules/
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
-
-# Python / AI Engine
+# Python / AI engine
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
 .pytest_cache/
+.venv/
 venv/
 env/
 .env
-.venv/
+/data/
+
+# Model weights: only the selected models are versioned
 *.pt
 !app/weights/*.pt
-app/weights/_incoming/
 *.onnx
 !platform/assets/models/*/model.onnx
 *.engine
-data/faces.json
-
-# .NET / C# Backend
-bin/
-obj/
-backend/src/*/bin/
-backend/src/*/obj/
-backend/tests/*/bin/
-backend/tests/*/obj/
-.vs/
-*.user
-*.userossc
-*.suo
-
-# System & IDE
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-*.log
 
 # EGIC platform runtime data (evidence snapshots, live journal)
 platform/data/evidence/*
 !platform/data/evidence/README.txt
 platform/data/journal.ndjson
 platform/.vercel
+node_modules/
 
-# ANPR training / benchmark data (scripts/anpr_*.py)
-data/anpr/
-
-# local archive of replaced code / models (kept on disk, not in git)
-_archive/
-# legacy ASP.NET backend — replaced by platform/server (kept locally)
-backend/
+# System & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.vs/
+*.log
