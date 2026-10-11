@@ -29,3 +29,11 @@ Thumbs.db
 .idea/
 .vs/
 *.log
+
+# Legacy stack maintained by the team (frontend/ React · backend/ ASP.NET)
+bin/
+obj/
+frontend/dist/
+frontend/.vite/
+*.user
+*.suo
