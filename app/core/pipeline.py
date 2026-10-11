@@ -12,12 +12,17 @@ class VideoSource:
         self.cap = None
 
     def start(self):
-        self.cap = cv2.VideoCapture(self.source)
-        if not self.cap.isOpened():
-            raise RuntimeError(f"Failed to open video source: {self.source}")
+        try:
+            self.cap = cv2.VideoCapture(self.source)
+            if not self.cap.isOpened():
+                print(f"[WARNING] Video source {self.source} could not be opened. Running in cloud/headless mode.")
+                self.cap = None
+        except Exception as e:
+            print(f"[WARNING] Error opening video source {self.source}: {e}")
+            self.cap = None
 
     def read(self):
-        if self.cap is None:
+        if self.cap is None or not self.cap.isOpened():
             return False, None
         return self.cap.read()
 
