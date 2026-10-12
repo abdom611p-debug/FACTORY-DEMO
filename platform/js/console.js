@@ -711,6 +711,32 @@
   })();
   window.EGICAlarm = EGICAlarm;
 
+  /* ---------- wipe test data (server: evidence + journal · browser: local copies) ---------- */
+  function resetDialog() {
+    var faces = h('input', { type: 'checkbox' });
+    var msg = h('div', { class: 'muted', style: { fontSize: '12.5px' } });
+    var go = h('button', { class: 'btn btn--primary', text: 'مسح البيانات نهائيًا' });
+    openModal('🧹 مسح بيانات التجارب', h('div', { style: { display: 'grid', gap: '12px' } },
+      h('div', { style: { lineHeight: '1.8' } }, 'هيتم مسح كل اللي اتسجل من التجارب: ', h('b', { text: 'صور الأدلة، أحداث الكشف الحي (حريق · تدخين · PPE · سلوك)، وقراءات اللوحات' }), '. البيانات التوضيحية المولّدة هتفضل زي ما هي.'),
+      h('label', { class: 'switch' }, faces, 'امسح كمان بصمات الوجه المسجلة على هذا المتصفح'),
+      msg, h('div', { class: 'row' }, go, h('button', { class: 'btn', text: 'إلغاء', onclick: closeModal }))));
+    go.addEventListener('click', function () {
+      go.disabled = true; msg.textContent = 'جارٍ المسح…';
+      var local = function () { try { if (faces.checked) localStorage.removeItem('egic-faces'); } catch (e) { } return API.resetLocal(); };
+      if (API.state.mode !== 'server') { local().then(function () { location.reload(); }); return; }
+      var send = function (token) {
+        return fetch(API.state.base + '/api/v1/admin/reset', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { 'X-Admin-Token': token } : {}), body: JSON.stringify({ confirm: 'RESET' }) });
+      };
+      var token = null; try { token = sessionStorage.getItem('egic-admin-token'); } catch (e) { }
+      send(token).then(function (r) {
+        if (r.status === 401) { token = window.prompt('رمز الإدارة (ADMIN_TOKEN):'); if (!token) throw new Error('مطلوب رمز الإدارة'); try { sessionStorage.setItem('egic-admin-token', token); } catch (e) { } return send(token); }
+        return r;
+      }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (j) {
+        return local().then(function () { msg.textContent = 'تم المسح: ' + j.files + ' صورة · ' + j.records + ' سجل. جارٍ إعادة التحميل…'; });
+      }).catch(function (e) { go.disabled = false; msg.textContent = 'تعذر المسح: ' + e.message; });
+    });
+  }
+
   function boot() {
     clear($('#fsBtn')).appendChild(icon('full'));
     clear($('#bellBtn')).appendChild(icon('bell')); $('#bellBtn').appendChild(h('span', { class: 'count', id: 'bellCount', text: '0' }));
@@ -724,6 +750,7 @@
     $('#bellBtn').addEventListener('click', function () { S.unread = 0; setBell(0); navigate('#/events'); });
     $('#demoBtn').addEventListener('click', function () { API.post('demo', {}); toast('تشغيل سلسلة الحدث', 'كاميرا ← رصد ← تصنيف ← خطورة ← دليل ← إشعار ← حادثة ← BBS'); });
     $('#sosAck').addEventListener('click', function () { $('#sos').classList.remove('is-on'); });
+    $('#resetBtn').addEventListener('click', resetDialog);
     $('#hzAck').addEventListener('click', function () { var e = EGICAlarm.current(); EGICAlarm.hide(); if (e && e.id) API.post('events/' + e.id + '/action', { action: 'ack', note: 'تم استلام الإنذار من لوحة القيادة' }).catch(function () { }); });
     $('#hzView').addEventListener('click', function () { var e = EGICAlarm.current(); EGICAlarm.hide(); if (e) openEvent(e); });
     try { if (window.Notification && Notification.permission === 'default') document.addEventListener('pointerdown', function () { Notification.requestPermission(); }, { once: true }); } catch (e) { }
@@ -747,6 +774,7 @@
           if (e.type === 'SOS_GESTURE') { $('#sosImg').src = evidenceSrc(e, 240); $('#sosSub').textContent = e.siteName + ' · ' + e.zoneName + ' · ' + fTime(e.ts) + (e.workerName ? ' · ' + e.workerName : ''); $('#sos').classList.add('is-on'); setTimeout(function () { $('#sos').classList.remove('is-on'); }, 15000); }
         });
         API.on('trace', function (t) { if (t.step === 'DONE') toast('اكتملت سلسلة الحدث', 'تم تحديث لوحة القيادة ومؤشرات BBS', { action: t.eventId ? ['عرض الحدث', function () { API.get('events/' + t.eventId).then(openEvent); }] : null }); });
+        API.on('reset', function (r) { toast('تم مسح بيانات التجارب', (r.files || 0) + ' صورة · ' + (r.records || 0) + ' سجل — جارٍ إعادة التحميل', { ms: 2500 }); setTimeout(function () { location.reload(); }, 1500); });
         API.on('connection', function (c) { if (!c.connected) toast('انقطع الاتصال بالخادم', 'إعادة المحاولة تلقائيًا…', { kind: 'critical' }); });
         window.addEventListener('hashchange', route);
         route();

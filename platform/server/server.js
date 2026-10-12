@@ -44,7 +44,7 @@ const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
 const CORS = {
   'Access-Control-Allow-Origin': process.env.CORS_ORIGIN || '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token',
   'Access-Control-Max-Age': '86400'
 };
 
@@ -56,7 +56,7 @@ const log = (...a) => console.log(C.dim + new Date().toLocaleTimeString('en-GB')
 /* ------------------------------------------------------------------ */
 /* Engine + journal (live records survive restarts)                    */
 /* ------------------------------------------------------------------ */
-const engine = new Engine({ mode: 'server' });
+let engine = new Engine({ mode: 'server' }); // replaced on POST /api/v1/admin/reset
 
 function saveDataUrl(dataUrl, name) {
   const m = /^data:image\/(jpeg|png|webp);base64,(.+)$/.exec(dataUrl || '');
@@ -96,12 +96,29 @@ function replayJournal() {
 /* SSE                                                                  */
 /* ------------------------------------------------------------------ */
 const clients = new Set();
-engine.on((msg) => {
+function broadcast(msg) {
   const data = 'event: ' + msg.type + '\ndata: ' + JSON.stringify(msg.data) + '\n\n';
   for (const res of clients) { try { res.write(data); } catch (e) { clients.delete(res); } }
   if (msg.type === 'event' && String(msg.data.source || '').indexOf('live') === 0) log(C.o + '● LIVE AI' + C.x, msg.data.typeAr, '→', msg.data.workerName || 'غير معروف', C.dim + msg.data.id + C.x);
   if (msg.type === 'gate' && String(msg.data.source || '').indexOf('live') === 0) log(C.c + '● LIVE ANPR' + C.x, msg.data.plate, msg.data.lane, msg.data.decision);
-});
+}
+engine.on(broadcast);
+
+// Wipe recorded test data (evidence snapshots + live journal) and restart the engine on a clean state.
+// Set ADMIN_TOKEN to require the header X-Admin-Token on public deployments.
+function resetData() {
+  let files = 0;
+  for (const f of fs.readdirSync(EVID)) { if (f !== 'README.txt') { try { fs.unlinkSync(path.join(EVID, f)); files++; } catch (e) { } } }
+  let records = 0;
+  if (fs.existsSync(JOURNAL)) { records = fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean).length; fs.unlinkSync(JOURNAL); }
+  engine.stop();
+  engine = new Engine({ mode: 'server' });
+  engine.on(broadcast);
+  engine.start();
+  log(C.y + '● RESET' + C.x, 'test data wiped', C.dim + files + ' evidence files · ' + records + ' journal records' + C.x);
+  broadcast({ type: 'reset', data: { ts: Date.now(), files, records } });
+  return { ok: true, files, records };
+}
 setInterval(() => { for (const res of clients) { try { res.write(': ping\n\n'); } catch (e) { clients.delete(res); } } }, 15000);
 
 /* ------------------------------------------------------------------ */
@@ -206,6 +223,13 @@ async function api(req, res, pathname, query) {
   const t0 = Date.now();
   const cm = /^\/api\/v1\/cam\/([^/]+)(?:\/(frame|mjpeg|offer|answer))?$/.exec(pathname);
   if (cm) return camApi(req, res, cm[1], cm[2] || 'status');
+  if (pathname === '/api/v1/admin/reset' && req.method === 'POST') {
+    if (process.env.ADMIN_TOKEN && req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) return send(res, 401, { error: 'admin_token_required' });
+    let j = {};
+    try { j = JSON.parse((await readRaw(req, 4096)).toString('utf8') || '{}'); } catch (e) { }
+    if (j.confirm !== 'RESET') return send(res, 400, { error: 'confirm_required' });
+    return send(res, 200, resetData());
+  }
   if (pathname === '/api/v1/netinfo') return send(res, 200, { lan: lanAddresses(), port: PORT, httpsPort: httpsServer ? HTTPS_PORT : null });
   if (pathname === '/api/v1/stream') {
     res.writeHead(200, Object.assign({ 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' }, CORS));

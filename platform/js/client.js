@@ -75,7 +75,7 @@
     if (state.es) try { state.es.close(); } catch (e) { }
     var es = new EventSource(state.base + '/api/v1/stream');
     state.es = es;
-    ['hello', 'event', 'event_update', 'gate', 'health', 'kpi', 'trace', 'worker', 'vehicle', 'audit', 'camera', 'phonecam'].forEach(function (t) {
+    ['hello', 'event', 'event_update', 'gate', 'health', 'kpi', 'trace', 'worker', 'vehicle', 'audit', 'camera', 'phonecam', 'reset'].forEach(function (t) {
       es.addEventListener(t, function (ev) { var d; try { d = JSON.parse(ev.data); } catch (e) { return; } dispatch({ type: t, data: d, ts: Date.now() }); });
     });
     es.onopen = function () { state.connected = true; dispatch({ type: 'connection', data: { connected: true, mode: 'server' } }); };
