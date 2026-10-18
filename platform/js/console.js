@@ -54,6 +54,8 @@
     helmet: '<path d="M4 16a8 8 0 0 1 16 0"/><path d="M2.5 16h19v2.5h-19z"/><path d="M12 8V5M9 9.5 8 6.5M15 9.5l1-3"/>',
     glasses: '<circle cx="6.5" cy="14" r="3.5"/><circle cx="17.5" cy="14" r="3.5"/><path d="M10 14h4M3 13 4.5 8M21 13l-1.5-5"/>',
     vest: '<path d="M8 3 5 6v15h5v-6l2-2 2 2v6h5V6l-3-3-2 3h-4z"/><path d="M5 12h5M14 12h5"/>',
+    gloves: '<path d="M7 21v-4l-2.5-4.5a1.6 1.6 0 0 1 2.7-1.7L9 13V5a1.5 1.5 0 0 1 3 0v6-7.5a1.5 1.5 0 0 1 3 0V11V5a1.5 1.5 0 0 1 3 0v9c0 3-1.5 5-3 7z"/><path d="M7 18h8"/>',
+    ears: '<path d="M5 14v-2a7 7 0 0 1 14 0v2"/><rect x="3" y="13" width="4" height="7" rx="1.5"/><rect x="17" y="13" width="4" height="7" rx="1.5"/>',
     bell: '<path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>',
@@ -305,8 +307,8 @@
     function drawTrend(range) {
       API.get('trend', { site: site, range: range }).then(function (t) {
         var xs = t.points.map(function (p) { return p.t; });
-        var names = [['index', 'المؤشر الكلي'], ['helmet', 'الخوذة'], ['glasses', 'النظارة'], ['vest', 'السترة']];
-        var series = names.map(function (n, i) { return { name: n[1], values: t.points.map(function (p) { return n[0] === 'index' ? p.index : p.items[n[0]]; }), color: C.seriesColor(i), hidden: hidden[i], width: i === 0 ? 2.5 : 1.6 }; });
+        var names = [['index', 'المؤشر الكلي'], ['helmet', 'الخوذة'], ['glasses', 'النظارة'], ['vest', 'السترة'], ['gloves', 'القفازات'], ['ears', 'سماعات الأذن']];
+        var series = names.map(function (n, i) { return { name: n[1], values: t.points.map(function (p) { return n[0] === 'index' ? p.index : p.items[n[0]]; }), color: i === 5 ? 'var(--warning)' : C.seriesColor(i), hidden: hidden[i], width: i === 0 ? 2.5 : 1.6 }; });
         if (trendHolder.__legend) trendHolder.__legend.remove();
         C.line(trendHolder, { x: xs, series: series, height: 240, yMax: 100, yMinAuto: true, target: 95, targetLabel: 'الهدف 95%', yFormat: function (v) { return v.toFixed(1) + '%'; }, yTick: function (v) { return v + '%'; }, xLabel: function (x) { return range === '30d' ? fDate(x).slice(5) : fHM(x); }, tipTitle: function (x) { return range === '30d' ? fDate(x) : fDate(x) + ' ' + fHM(x); }, onToggle: function (i) { hidden[i] = !hidden[i]; drawTrend(range); } });
       });

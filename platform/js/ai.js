@@ -250,9 +250,9 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* PPE analysis — associate helmet / glasses / vest with each person    */
+  /* PPE analysis — associate helmet / glasses / vest / gloves / ear protection with each person */
   /* ------------------------------------------------------------------ */
-  var PPE_CONF = { person: 0.35, head: 0.3, face: 0.3, helmet: 0.35, glasses: 0.28, 'safety-vest': 0.35, 'safety-suit': 0.4, gloves: 0.35, 'face-mask': 0.35, 'face-guard': 0.35, hands: 0.35, shoes: 0.35, ear: 0.9, 'ear-mufs': 0.4, foot: 0.9, tool: 0.9, 'medical-suit': 0.5 };
+  var PPE_CONF = { person: 0.35, head: 0.3, face: 0.3, helmet: 0.35, glasses: 0.28, 'safety-vest': 0.35, 'safety-suit': 0.4, gloves: 0.35, 'face-mask': 0.35, 'face-guard': 0.35, hands: 0.4, shoes: 0.35, ear: 0.45, 'ear-mufs': 0.35, foot: 0.9, tool: 0.9, 'medical-suit': 0.5 };
 
   function expand(b, l, t, r, bt) { var w = b.x2 - b.x1, h = b.y2 - b.y1; return { x1: b.x1 - w * l, y1: b.y1 - h * t, x2: b.x2 + w * r, y2: b.y2 + h * bt }; }
   function center(b) { return { x: (b.x1 + b.x2) / 2, y: (b.y1 + b.y2) / 2 }; }
@@ -262,6 +262,7 @@
     var by = {}; dets.forEach(function (d) { (by[d.label] = by[d.label] || []).push(d); });
     var persons = (by.person || []).slice();
     var heads = by.head || [], faces = by.face || [], helmets = by.helmet || [], glasses = by.glasses || [], vests = (by['safety-vest'] || []);
+    var gloves = by.gloves || [], hands = by.hands || [], muffs = by['ear-mufs'] || [], ears = by.ear || [];
     // People without a person box (close-up webcam): synthesise one from head/face
     var anchors = heads.length ? heads : faces;
     anchors.forEach(function (hd) {
@@ -301,6 +302,21 @@
         var pw = p.x2 - p.x1;
         res.items.vest = vs ? { state: 'OK', box: vs, score: vs.score } : { state: 'MISSING', box: { x1: p.x1 + pw * 0.12, y1: torsoTop, x2: p.x2 - pw * 0.12, y2: Math.min(p.y2, torsoTop + headH * 2.6) } };
       } else res.items.vest = { state: 'UNKNOWN' };
+      // gloves — judged only when hands are visible: a gloved hand on the person = OK, a bare hand = MISSING
+      var hz2 = expand(p, 0.12, 0, 0.12, 0.05);
+      var onMe = function (x) { return inside(center(x), hz2) && center(x).y > (head ? head.y2 : p.y1 + ph * 0.2); };
+      var glv = pickBest(gloves, function (x) { return onMe(x) ? x.score : 0; });
+      var bare = pickBest(hands, function (x) { return onMe(x) ? x.score : 0; });
+      res.items.gloves = glv && (!bare || glv.score >= bare.score * 0.8) ? { state: 'OK', box: glv, score: glv.score } : bare ? { state: 'MISSING', box: bare, score: bare.score } : { state: 'UNKNOWN' };
+      // ear protection (noisy machines) — ear muffs beside the head = OK; a bare ear, or a clear frontal face without muffs = MISSING
+      if (head) {
+        var hw = head.x2 - head.x1, hh2 = head.y2 - head.y1;
+        var ez = { x1: head.x1 - hw * 0.45, y1: head.y1 - hh2 * 0.2, x2: head.x2 + hw * 0.45, y2: head.y2 + hh2 * 0.25 };
+        var muff = pickBest(muffs, function (x) { return inside(center(x), ez) || ioa(x, ez) > 0.4 ? x.score : 0; });
+        var ear = pickBest(ears, function (x) { return inside(center(x), ez) ? x.score : 0; });
+        var earBox = { x1: head.x1 - hw * 0.12, y1: head.y1 + hh2 * 0.3, x2: head.x2 + hw * 0.12, y2: head.y1 + hh2 * 0.75 };
+        res.items.ears = muff ? { state: 'OK', box: muff, score: muff.score } : ear ? { state: 'MISSING', box: ear, score: ear.score } : face && hw > W * 0.06 ? { state: 'MISSING', box: earBox } : { state: 'UNKNOWN' };
+      } else res.items.ears = { state: 'UNKNOWN' };
       return res;
     });
     // de-duplicate synthetic persons that overlap real ones
@@ -333,7 +349,7 @@
       if (p.synthetic && !vest && !noVest) res.items.vest = { state: 'UNKNOWN' }; // only a head is in view
       else res.items.vest = vest && !noVest ? { state: 'OK', box: vest, score: vest.score }
         : { state: 'MISSING', box: noVest || { x1: p.x1 + pw * 0.12, y1: p.y1 + ph * 0.22, x2: p.x2 - pw * 0.12, y2: p.y1 + ph * 0.6 }, score: noVest ? noVest.score : null };
-      res.items.glasses = { state: 'UNKNOWN' };
+      res.items.glasses = { state: 'UNKNOWN' }; res.items.gloves = { state: 'UNKNOWN' }; res.items.ears = { state: 'UNKNOWN' };
       return res;
     });
   }

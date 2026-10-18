@@ -105,9 +105,10 @@
     glasses: { id: 'glasses', ar: 'نظارة الوقاية',    en: 'Safety glasses', base: 0.905 },
     vest:    { id: 'vest',    ar: 'السترة العاكسة',   en: 'Hi-vis vest',  base: 0.94 },
     gloves:  { id: 'gloves',  ar: 'القفازات',         en: 'Gloves',       base: 0.915 },
-    shoes:   { id: 'shoes',   ar: 'حذاء السلامة',     en: 'Safety shoes', base: 0.975 }
+    shoes:   { id: 'shoes',   ar: 'حذاء السلامة',     en: 'Safety shoes', base: 0.975 },
+    ears:    { id: 'ears',    ar: 'سماعات حماية الأذن', en: 'Hearing protection', base: 0.93 }
   };
-  var PPE_ORDER = ['helmet', 'glasses', 'vest', 'gloves', 'shoes'];
+  var PPE_ORDER = ['helmet', 'glasses', 'vest', 'gloves', 'ears', 'shoes'];
 
   var SEV = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
   var SEV_AR = { LOW: 'منخفضة', MEDIUM: 'متوسطة', HIGH: 'عالية', CRITICAL: 'حرجة' };
@@ -118,6 +119,7 @@
     NO_VEST:          { group: 'PPE',       ppe: 'vest',    ar: 'عدم ارتداء السترة العاكسة',     en: 'No hi-vis vest',          sev: 'MEDIUM' },
     NO_GLOVES:        { group: 'PPE',       ppe: 'gloves',  ar: 'عدم ارتداء القفازات',           en: 'No gloves',               sev: 'MEDIUM' },
     NO_SHOES:         { group: 'PPE',       ppe: 'shoes',   ar: 'عدم ارتداء حذاء السلامة',       en: 'No safety shoes',         sev: 'MEDIUM' },
+    NO_EARMUFFS:      { group: 'PPE',       ppe: 'ears',    ar: 'عدم ارتداء سماعات حماية الأذن',  en: 'No hearing protection',   sev: 'MEDIUM' },
     RESTRICTED_ZONE:  { group: 'ZONE',      ar: 'دخول منطقة محظورة',            en: 'Restricted zone entry',   sev: 'HIGH' },
     LINE_CROSSING:    { group: 'ZONE',      ar: 'عبور خط أمان',                  en: 'Safety line crossing',    sev: 'MEDIUM' },
     INTRUSION:        { group: 'ZONE',      ar: 'تسلل خارج أوقات العمل',         en: 'After-hours intrusion',   sev: 'CRITICAL' },
@@ -139,10 +141,10 @@
   // zone kind → [event type, weight]
   var KIND_EVENTS = {
     checkpoint: [['NO_HELMET', 5], ['NO_GLASSES', 4], ['NO_VEST', 4], ['NO_SHOES', 1]],
-    production: [['NO_HELMET', 5], ['NO_VEST', 3], ['NO_GLASSES', 3], ['NO_SHOES', 1], ['UNSAFE_PROXIMITY', 2], ['RUNNING', 1.5], ['CROWD', 1], ['LINE_CROSSING', 1.5], ['UNATTENDED_STATION', 1.2], ['ERGONOMIC_RISK', 0.8], ['SOS_GESTURE', 0.03]],
-    hot:        [['NO_HELMET', 3], ['NO_GLOVES', 4], ['NO_GLASSES', 3], ['RESTRICTED_ZONE', 3], ['UNSAFE_PROXIMITY', 2]],
+    production: [['NO_HELMET', 5], ['NO_VEST', 3], ['NO_GLASSES', 3], ['NO_GLOVES', 2], ['NO_EARMUFFS', 2.5], ['NO_SHOES', 1], ['UNSAFE_PROXIMITY', 2], ['RUNNING', 1.5], ['CROWD', 1], ['LINE_CROSSING', 1.5], ['UNATTENDED_STATION', 1.2], ['ERGONOMIC_RISK', 0.8], ['SOS_GESTURE', 0.03]],
+    hot:        [['NO_HELMET', 3], ['NO_GLOVES', 4], ['NO_GLASSES', 3], ['NO_EARMUFFS', 2], ['RESTRICTED_ZONE', 3], ['UNSAFE_PROXIMITY', 2]],
     chemical:   [['NO_GLOVES', 5], ['NO_GLASSES', 4], ['RESTRICTED_ZONE', 2], ['NO_VEST', 1]],
-    machine:    [['UNSAFE_PROXIMITY', 4], ['NO_GLASSES', 4], ['NO_GLOVES', 2], ['LINE_CROSSING', 2], ['UNATTENDED_STATION', 1.5]],
+    machine:    [['UNSAFE_PROXIMITY', 4], ['NO_GLASSES', 4], ['NO_GLOVES', 2], ['NO_EARMUFFS', 3], ['LINE_CROSSING', 2], ['UNATTENDED_STATION', 1.5]],
     test:       [['RESTRICTED_ZONE', 5], ['NO_GLASSES', 2], ['NO_HELMET', 2]],
     packing:    [['NO_VEST', 3], ['CROWD', 2], ['PERSON_VEHICLE', 2], ['NO_SHOES', 1], ['NO_HELMET', 1]],
     storage:    [['NO_HELMET', 3], ['NO_VEST', 3], ['PERSON_VEHICLE', 3], ['WORK_AT_HEIGHT', 2], ['FALL', 0.25], ['ERGONOMIC_RISK', 1.2]],
@@ -153,10 +155,10 @@
   };
   var KIND_REQ = {
     checkpoint: ['helmet', 'glasses', 'vest'],
-    production: ['helmet', 'vest', 'glasses', 'shoes'],
-    hot: ['helmet', 'gloves', 'glasses', 'shoes'],
+    production: ['helmet', 'vest', 'glasses', 'gloves', 'ears', 'shoes'],
+    hot: ['helmet', 'gloves', 'glasses', 'ears', 'shoes'],
     chemical: ['gloves', 'glasses', 'vest', 'shoes'],
-    machine: ['glasses', 'gloves', 'shoes'],
+    machine: ['glasses', 'gloves', 'ears', 'shoes'],
     test: ['helmet', 'glasses', 'shoes'],
     packing: ['vest', 'shoes'],
     storage: ['helmet', 'vest', 'shoes'],
@@ -359,7 +361,7 @@
     this.attSettings = JSON.parse(JSON.stringify(ATT_DEFAULTS));
 
     // live demo camera (browser webcam) — mapped to the PPE checkpoint of Plant 01
-    var live = { id: 'P01-CAM-LIVE', siteId: 'PLT-01', zoneId: 'CHK', name: 'كاميرا العرض المباشر · نقطة فحص الوقاية', nameEn: 'Live demo camera · PPE checkpoint', kind: 'webcam', res: 'حسب الجهاز', fps: 30, protocol: 'WebRTC (getUserMedia)', status: 'standby', assessment: 'USE', lowLight: false, modules: ['NO_HELMET', 'NO_GLASSES', 'NO_VEST'], ip: 'local', scene: 'checkpoint', live: true };
+    var live = { id: 'P01-CAM-LIVE', siteId: 'PLT-01', zoneId: 'CHK', name: 'كاميرا العرض المباشر · نقطة فحص الوقاية', nameEn: 'Live demo camera · PPE checkpoint', kind: 'webcam', res: 'حسب الجهاز', fps: 30, protocol: 'WebRTC (getUserMedia)', status: 'standby', assessment: 'USE', lowLight: false, modules: ['NO_HELMET', 'NO_GLASSES', 'NO_VEST', 'NO_GLOVES', 'NO_EARMUFFS'], ip: 'local', scene: 'checkpoint', live: true };
     this.cameras.unshift(live); this.camById[live.id] = live;
     var liveAnpr = { id: 'P01-ANPR-LIVE', siteId: 'PLT-01', zoneId: 'GTE', name: 'قارئ اللوحات المباشر · البوابة الرئيسية', nameEn: 'Live ANPR · main gate', kind: 'webcam', res: 'حسب الجهاز', fps: 30, protocol: 'WebRTC / ملف فيديو', status: 'standby', assessment: 'USE', lowLight: false, modules: ['ANPR'], ip: 'local', scene: 'gate', live: true, gateId: 'PLT-01-G1' };
     this.cameras.unshift(liveAnpr); this.camById[liveAnpr.id] = liveAnpr;
@@ -1137,7 +1139,7 @@
   Engine.prototype.upsertCamera = function (d) {
     var c = this.camById[d.id];
     if (!c) {
-      c = { id: d.id, siteId: 'PLT-01', zoneId: 'CHK', kind: 'ipcam', res: 'حسب الكاميرا', fps: 0, status: 'standby', assessment: 'USE', lowLight: false, modules: ['NO_HELMET', 'NO_GLASSES', 'NO_VEST', 'FIRE_DETECTED', 'SMOKING_DETECTED'], ip: '', scene: 'checkpoint', live: true, ipcam: true };
+      c = { id: d.id, siteId: 'PLT-01', zoneId: 'CHK', kind: 'ipcam', res: 'حسب الكاميرا', fps: 0, status: 'standby', assessment: 'USE', lowLight: false, modules: ['NO_HELMET', 'NO_GLASSES', 'NO_VEST', 'NO_GLOVES', 'NO_EARMUFFS', 'FIRE_DETECTED', 'SMOKING_DETECTED'], ip: '', scene: 'checkpoint', live: true, ipcam: true };
       this.cameras.unshift(c); this.camById[c.id] = c;
     }
     ['name', 'protocol', 'ip', 'status'].forEach(function (k) { if (d[k] !== undefined) c[k] = d[k]; });

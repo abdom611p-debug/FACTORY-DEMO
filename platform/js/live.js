@@ -521,11 +521,14 @@
   /* ------------------------------------------------------------------ */
   /* PPE / Behaviour lab                                                  */
   /* ------------------------------------------------------------------ */
-  var PPE_TYPES = { helmet: 'NO_HELMET', glasses: 'NO_GLASSES', vest: 'NO_VEST' };
-  var PPE_AR = { helmet: 'الخوذة', glasses: 'نظارة الوقاية', vest: 'السترة العاكسة' };
-  var PPE_EN = { helmet: 'NO HELMET', glasses: 'NO GLASSES', vest: 'NO VEST' };
-  var LAB = { mode: 'ppe', mirror: true, sound: true, required: { helmet: true, glasses: true, vest: true }, idMode: 'auto', profileId: null, persistMs: 1500, stationSec: 8, ppeEngine: 'browser' };
+  var PPE_KEYS = ['helmet', 'glasses', 'vest', 'gloves', 'ears'];
+  var PPE_TYPES = { helmet: 'NO_HELMET', glasses: 'NO_GLASSES', vest: 'NO_VEST', gloves: 'NO_GLOVES', ears: 'NO_EARMUFFS' };
+  var PPE_AR = { helmet: 'الخوذة', glasses: 'نظارة الوقاية', vest: 'السترة العاكسة', gloves: 'القفازات', ears: 'سماعات الأذن' };
+  var PPE_EN = { helmet: 'NO HELMET', glasses: 'NO GLASSES', vest: 'NO VEST', gloves: 'NO GLOVES', ears: 'NO EAR PROTECTION' };
+  var PPE_SUB = { helmet: 'HARD HAT', glasses: 'SAFETY GLASSES', vest: 'HI-VIS VEST', gloves: 'SAFETY GLOVES · لما الإيدين تبان', ears: 'EAR MUFFS · ضوضاء المكن' };
+  var LAB = { mode: 'ppe', mirror: true, sound: true, required: { helmet: true, glasses: true, vest: true, gloves: true, ears: true }, idMode: 'auto', profileId: null, persistMs: 1500, stationSec: 8, ppeEngine: 'browser' };
   try { Object.assign(LAB, JSON.parse(localStorage.getItem('egic-lab') || '{}')); } catch (e) { }
+  LAB.required = { helmet: true, glasses: true, vest: true, gloves: true, ears: true }; // PPE always checks the full set
   function saveLab() { try { localStorage.setItem('egic-lab', JSON.stringify({ mode: LAB.mode, mirror: LAB.mirror, sound: LAB.sound, required: LAB.required, idMode: LAB.idMode, profileId: LAB.profileId, stationSec: LAB.stationSec, ppeEngine: LAB.ppeEngine })); } catch (e) { } }
 
   U.register('live', function (v) {
@@ -535,7 +538,7 @@
     var ppeEng = null, titanOk = false, titanErrT = 0;
     function ppeEngine() { return ppeEng || LAB.ppeEngine; }
     var titanSchema = null; // 'sh17' from the EGIC AI engine (has glasses) · null for the legacy TITAN ppe_hf.onnx
-    function reqKeys() { return Object.keys(LAB.required).filter(function (k) { return LAB.required[k] && !(k === 'glasses' && ppeEngine() === 'titan' && titanSchema !== 'sh17'); }); }
+    function reqKeys() { return Object.keys(LAB.required).filter(function (k) { return LAB.required[k] && PPE_TYPES[k] && !(k !== 'helmet' && k !== 'vest' && ppeEngine() === 'titan' && titanSchema !== 'sh17'); }); }
     function hasPPE() { return LAB.mode === 'ppe' || LAB.mode === 'both'; }
     function hasPose() { return LAB.mode === 'behavior' || LAB.mode === 'both'; }
     function hasFire() { return LAB.mode === 'fire' || LAB.mode === 'both'; }
@@ -546,7 +549,7 @@
 
     // mode selector
     var modes = h('div', { class: 'mode-cards' });
-    [['ppe', 'معدات الوقاية PPE', 'خوذة · نظارة وقاية · سترة عاكسة — YOLOv8s (SH17)', null],
+    [['ppe', 'معدات الوقاية PPE', 'خوذة · نظارة · سترة · قفازات · سماعات أذن — YOLOv8s (SH17)', null],
       ['fire', 'الحريق والدخان', 'رصد اللهب والدخان لحظيًا + صفارة إنذار على كل الشاشات — YOLOv8n (D-Fire)', 'جديد · إنذار فوري'],
       ['smoking', 'كشف التدخين', 'سيجارة · فيب · دخان سيجارة داخل المنشأة — YOLOv8 / Ensemble', 'جديد'],
       ['behavior', 'ذكاء السلوك (Pose AI)', 'استغاثة بالإشارة · سقوط · ماكينة بدون مشغّل · وضعية خطرة — YOLO26', 'YOLO26'],
@@ -567,7 +570,7 @@
     var empty = h('div', { class: 'lab-empty' }, h('div', null,
       h('div', { style: { width: '64px', height: '64px', margin: '0 auto', borderRadius: '18px', display: 'grid', placeItems: 'center', background: 'rgba(43,161,96,.16)', color: 'var(--green-hi)' } }, U.icon('live')),
       h('h3', { text: 'ابدأ الكشف المباشر' }),
-      h('p', { text: 'قف أمام الكاميرا. سيحدد النظام الخوذة ونظارة الوقاية والسترة العاكسة، وإن نقص أي منها يلتقط صورة ويسجلها في ملف العامل.' }),
+      h('p', { text: 'قف أمام الكاميرا. سيحدد النظام الخوذة والنظارة والسترة والقفازات وسماعات الأذن، وإن نقص أي منها يلتقط صورة ويسجلها في ملف الموظف.' }),
       h('div', { class: 'row' }, h('button', { class: 'btn btn--accent', onclick: function () { startCamera(); } }, U.icon('play'), 'تشغيل الكاميرا'), h('button', { class: 'btn', onclick: function () { pairPhone(startPhone); } }, '📱 كاميرا الموبايل'), h('button', { class: 'btn', onclick: function () { ipCamDialog(startIpCam); } }, '🌐 كاميرا IP'), h('label', { class: 'btn' }, U.icon('upload'), 'صورة / فيديو', h('input', { type: 'file', accept: 'image/*,video/*', style: { display: 'none' }, onchange: function (e) { if (e.target.files[0]) startFile(e.target.files[0]); } })))));
     var loading = h('div', { class: 'lab-loading hidden' }, h('div', { class: 'box' }, h('div', { class: 'spinner' }), h('div', { style: { marginTop: '14px', fontWeight: 600 }, id: 'ldT', text: 'تحميل النماذج…' }), h('div', { class: 'bar' }, h('i', { id: 'ldBar' })), h('div', { class: 'muted mono', style: { fontSize: '11px' }, id: 'ldS', text: '' })));
     var stage = h('div', { class: 'lab-stage' }, canvas, video, img, phoneImg, phoneVid, h('div', { class: 'lab-hud' }, hudL, hudR), h('div', { class: 'lab-brand' }, h('div', { class: 'powered' }, h('span', { class: 'dot' }), 'POWERED BY ', h('b', { text: 'DELMON' }), h('span', { class: 'amp', text: '&' }), h('b', { text: 'DEV SMART X' }))), empty, loading);
@@ -581,7 +584,7 @@
       h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: LAB.mirror, onchange: function (e) { LAB.mirror = e.target.checked; saveLab(); } }), 'عكس الصورة'),
       h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: LAB.sound, onchange: function (e) { LAB.sound = e.target.checked; saveLab(); } }), 'تنبيه صوتي'));
     var engSel = U.select([['browser', 'محرك الذكاء: داخل الجهاز (المتصفح)'], ['titan', 'محرك الذكاء: خادم EGIC AI (Python)']], LAB.ppeEngine, function (x) { LAB.ppeEngine = x; saveLab(); st.tracker = null; prepareModels(); renderSide(); });
-    var reqRow = h('div', { class: 'lab-controls' }, engSel, h('span', { class: 'muted', style: { fontSize: '12px' }, text: 'المعدات المطلوبة في هذه المنطقة:' }), ['helmet', 'glasses', 'vest'].map(function (k) { return h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: LAB.required[k], onchange: function (e) { LAB.required[k] = e.target.checked; saveLab(); st.tracker = null; } }), PPE_AR[k]); }),
+    var reqRow = h('div', { class: 'lab-controls' }, engSel, h('span', { class: 'muted', style: { fontSize: '12px' }, text: 'فحص PPE: ' + PPE_KEYS.map(function (k) { return PPE_AR[k]; }).join(' · ') }),
       h('span', { class: 'muted', style: { fontSize: '12px', marginInlineStart: 'auto' }, text: 'مهلة المحطة (ث):' }), h('input', { class: 'input', type: 'number', min: 3, max: 120, value: LAB.stationSec, style: { width: '70px', height: '30px' }, onchange: function (e) { LAB.stationSec = Math.max(3, +e.target.value || 8); saveLab(); } }));
     left.appendChild(controls); left.appendChild(reqRow);
     var side = h('div', { class: 'lab-side' });
@@ -606,8 +609,8 @@
       if (hasPPE()) {
         var c2 = U.card('فحص معدات الوقاية', { icon: 'helmet' });
         var list = h('div', { class: 'ppe-list' });
-        ['helmet', 'glasses', 'vest'].forEach(function (k) {
-          var row = h('div', { class: 'ppe-row' + (LAB.required[k] ? '' : ' hidden') }, h('span', { class: 'ic' }, U.icon(k)), h('div', null, h('b', { text: PPE_AR[k] }), h('small', { text: ({ helmet: 'HARD HAT', glasses: 'SAFETY GLASSES', vest: 'HI-VIS VEST' })[k] })), h('span', { class: 'state-pill', text: '—' }));
+        PPE_KEYS.forEach(function (k) {
+          var row = h('div', { class: 'ppe-row' + (LAB.required[k] ? '' : ' hidden') }, h('span', { class: 'ic' }, U.icon(k)), h('div', null, h('b', { text: PPE_AR[k] }), h('small', { text: PPE_SUB[k] })), h('span', { class: 'state-pill', text: '—' }));
           ppeRows[k] = row; list.appendChild(row);
         });
         verdict = h('div', { class: 'verdict' }, h('span', { id: 'vText', text: 'بانتظار الكشف' }), h('span', { class: 'mono muted', style: { fontSize: '11px' }, id: 'vSub', text: '' }));
@@ -849,7 +852,7 @@
         var fs = Math.max(14, Math.round(d.w / 55));
         corners(g, track.box, COL.bad, Math.max(3, d.w / 320));
         items.forEach(function (k) { var it = track.items[k]; if (it && it.box) { g.setLineDash([10, 7]); g.strokeStyle = COL.bad; g.lineWidth = Math.max(3, d.w / 360); g.strokeRect(it.box.x1, it.box.y1, it.box.x2 - it.box.x1, it.box.y2 - it.box.y1); g.setLineDash([]); label(g, it.box.x1, it.box.y1, PPE_EN[k] + ' · بدون ' + PPE_AR[k], 'rgba(170,20,20,.92)', fs); } });
-        ['helmet', 'glasses', 'vest'].forEach(function (k) { var it = track.items[k]; if (it && it.state === 'OK' && it.box) { g.strokeStyle = COL.ok; g.lineWidth = Math.max(2, d.w / 480); g.strokeRect(it.box.x1, it.box.y1, it.box.x2 - it.box.x1, it.box.y2 - it.box.y1); } });
+        PPE_KEYS.forEach(function (k) { var it = track.items[k]; if (it && it.state === 'OK' && it.box) { g.strokeStyle = COL.ok; g.lineWidth = Math.max(2, d.w / 480); g.strokeRect(it.box.x1, it.box.y1, it.box.x2 - it.box.x1, it.box.y2 - it.box.y1); } });
         label(g, track.box.x1, track.box.y1, (workerCache[wid] ? workerCache[wid].name : 'عامل') + ' · مخالفة معدات وقاية', 'rgba(120,14,14,.95)', fs);
       }, d, title);
       var incident = 'INC-' + Date.now().toString(36).toUpperCase();
@@ -1029,7 +1032,7 @@
       }
       if (hasPPE() && ppeRows.helmet) {
         var req = reqKeys();
-        ['helmet', 'glasses', 'vest'].forEach(function (k) {
+        PPE_KEYS.forEach(function (k) {
           var row = ppeRows[k]; row.classList.toggle('hidden', !LAB.required[k]);
           var s2 = primary && primary.stable ? primary.stable[k] : null;
           row.classList.toggle('is-ok', s2 === 'OK'); row.classList.toggle('is-miss', s2 === 'MISSING');
