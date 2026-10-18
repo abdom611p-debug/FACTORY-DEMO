@@ -4,3 +4,8 @@ launcher
 *.bat
 .vercel
 .certs
+data/registry.ndjson
+data/ipcams.json
+data/agents.json
+data/evidence/*
+bin

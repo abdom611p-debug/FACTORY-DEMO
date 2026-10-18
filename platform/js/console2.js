@@ -142,7 +142,7 @@
   /* ------------------------------------------------------------------ */
   U.register('cameras', function (v) {
     var q = { site: S.site, kind: 'ALL', assess: 'ALL', term: '' };
-    v.appendChild(U.viewHead('الكاميرات', 'سجل الكاميرات مع حالة البث وقرار «إعادة الاستخدام أولًا»: استخدام · ترقية · استبدال', [h('span', { class: 'tag-demo', text: 'ILLUSTRATIVE ASSESSMENT' })]));
+    v.appendChild(U.viewHead('الكاميرات', 'سجل الكاميرات مع حالة البث وقرار «إعادة الاستخدام أولًا»: استخدام · ترقية · استبدال', [h('span', { class: 'tag-demo', text: 'ILLUSTRATIVE ASSESSMENT' }), h('button', { class: 'btn btn--sm btn--accent', onclick: function () { window.EGICLive.ipCamDialog(null); } }, U.icon('cameras'), '🌐 ربط كاميرا IP / NVR')]));
     var ks = h('div', { class: 'grid g-4' }); v.appendChild(ks);
     var fl = h('div', { class: 'filters card', style: { padding: '14px 16px' } });
     var qIn = h('input', { class: 'input', type: 'search', placeholder: 'رقم الكاميرا أو المنطقة…' });
@@ -161,7 +161,7 @@
         [['إجمالي الكاميرات', num(all.length, 0), all.filter(function (c) { return c.status === 'online'; }).length + ' متصلة الآن', 'cameras'], ['استخدام كما هي', num(cnt.USE, 0), Math.round(cnt.USE / all.length * 100) + '% · بدون تكلفة أجهزة', 'check'], ['ترقية', num(cnt.UPGRADE, 0), 'إعدادات / عدسة / إضاءة / Encoder', 'refresh'], ['استبدال', num(cnt.REPLACE, 0), 'خاضع للتقييم وخارج القيمة الثابتة', 'alert']].forEach(function (k) { var c = card(null); c.body.style.padding = '0'; c.body.appendChild(stat(k[0], k[1], k[2], { icon: k[3] })); ks.appendChild(c); });
         clear(tc.body);
         tc.body.appendChild(table([
-          { t: 'الكاميرا', f: function (c) { return h('div', null, h('div', { class: 'mono strong', text: c.id }), h('div', { class: 'muted', style: { fontSize: '11.5px' }, text: c.name })); } },
+          { t: 'الكاميرا', f: function (c) { return h('div', null, h('div', { class: 'mono strong', text: c.id }, c.ipcam ? h('span', { class: 'tag-real', style: { marginInlineStart: '6px' }, text: 'IP · حقيقية' }) : null), h('div', { class: 'muted', style: { fontSize: '11.5px' }, text: c.name })); } },
           { t: 'الموقع', f: function (c) { return U.siteName(c.siteId); } },
           { t: 'الحالة', f: function (c) { return h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } }, h('span', { class: 'dot ' + (c.status === 'online' ? 'dot--on' : c.status === 'degraded' ? 'dot--warn' : c.status === 'standby' ? 'dot--idle' : 'dot--off') }), ({ online: 'متصلة', degraded: 'متدهورة', offline: 'غير متصلة', standby: 'جاهزة' })[c.status]); } },
           { t: 'الدقة / FPS', f: function (c) { return h('span', { class: 'mono', text: c.res + ' · ' + c.fps }); } },
@@ -173,6 +173,7 @@
       });
     }
     load();
+    U.sub('ipcam', function () { API.get('cameras').then(function (r) { r.items.forEach(function (x) { S.cams[x.id] = x; }); load(); }); });
   });
 
   /* ------------------------------------------------------------------ */

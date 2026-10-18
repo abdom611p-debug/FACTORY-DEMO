@@ -245,10 +245,12 @@
     { id: 'KSA-01', code: 'K01', type: 'ksa', profile: 'warehouse', name: 'موقع السعودية', nameEn: 'KSA Site', sub: 'المملكة العربية السعودية', country: 'SA', tz: 'Asia/Riyadh', cams: 36, gates: [['G1', 'البوابة الرئيسية'], ['G2', 'بوابة الشاحنات']], workers: 95, risk: 0.92 }
   ];
 
-  var FIRST = ['أحمد', 'محمد', 'محمود', 'مصطفى', 'عمرو', 'كريم', 'إسلام', 'هاني', 'وليد', 'ياسر', 'حسام', 'طارق', 'شريف', 'عماد', 'سامح', 'أيمن', 'رامي', 'خالد', 'عبد الرحمن', 'يوسف', 'مينا', 'بيتر', 'جورج', 'إبراهيم', 'حسن', 'علي', 'سيد', 'رضا', 'أشرف', 'مروان', 'زياد', 'عادل', 'نادر', 'ماجد', 'فادي', 'مجدي', 'جمال', 'صبري', 'تامر', 'شادي', 'بولا', 'مايكل', 'عبد الله', 'حمدي', 'سعيد'];
-  var LAST = ['عبد العزيز', 'السيد', 'حسن', 'إبراهيم', 'فؤاد', 'رمضان', 'عبد الحميد', 'منصور', 'شوقي', 'نبيل', 'فتحي', 'سليمان', 'عزت', 'جرجس', 'حنا', 'لبيب', 'البنا', 'الشافعي', 'عثمان', 'زكي', 'مرسي', 'قاسم', 'سالم', 'بدوي', 'الجمال', 'يونس', 'صادق', 'حلمي', 'رشاد', 'توفيق'];
-  var FIRST_SA = ['عبدالله', 'فهد', 'سعود', 'ناصر', 'تركي', 'راكان', 'ماجد', 'فيصل', 'عبدالعزيز', 'بندر', 'محمد', 'أحمد', 'خالد', 'ياسر', 'وليد', 'عمر', 'سلطان', 'نايف'];
-  var LAST_SA = ['القحطاني', 'الشهري', 'العتيبي', 'الدوسري', 'الغامدي', 'الزهراني', 'المطيري', 'الحربي', 'السبيعي', 'حسن', 'عبدالرحمن', 'إبراهيم', 'يوسف', 'سالم'];
+  // attendance defaults — shift times, late/early grace and weekly day off (editable from the attendance screen)
+  var ATT_DEFAULTS = {
+    shifts: { A: { name: 'الوردية أ', start: '06:00', end: '14:00' }, B: { name: 'الوردية ب', start: '14:00', end: '22:00' }, C: { name: 'الوردية ج', start: '22:00', end: '06:00' } },
+    graceMin: 15, earlyMin: 15, weekend: [5], gapSec: 30
+  };
+  function hmToMin(s) { var m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '')); return m ? (+m[1] % 24) * 60 + Math.min(59, +m[2]) : 0; }
 
   var EG_LETTERS = ['أ', 'ب', 'ج', 'د', 'ر', 'س', 'ص', 'ط', 'ع', 'ف', 'ق', 'ل', 'م', 'ن', 'هـ', 'و', 'ى'];
   var SA_LETTERS = [['ا', 'A'], ['ب', 'B'], ['ح', 'J'], ['د', 'D'], ['ر', 'R'], ['س', 'S'], ['ص', 'X'], ['ط', 'T'], ['ع', 'E'], ['ق', 'G'], ['ك', 'K'], ['ل', 'L'], ['م', 'Z'], ['ن', 'N'], ['هـ', 'H'], ['و', 'U'], ['ى', 'V']];
@@ -348,30 +350,13 @@
         });
         self.gates.push({ id: s.id + '-' + g[0], siteId: s.id, code: g[0], name: g[1], lanes: 2, barrier: 'closed', controller: gi === 0 ? 'Relay / Dry-contact' : 'API (يُحدد أثناء التقييم)', lastPlate: null });
       });
-
-      // workforce
-      var depts = DEPTS[s.profile];
-      for (var w = 0; w < s.workers; w++) {
-        var ksa = s.country === 'SA';
-        var nm = ksa && r.chance(0.55) ? (r.pick(FIRST_SA) + ' ' + r.pick(LAST_SA)) : (r.pick(FIRST) + ' ' + r.pick(LAST));
-        var contractor = r.chance(0.12);
-        var wid = (contractor ? 'CTR-' : 'EMP-') + (contractor ? pad(3000 + self.workers.length, 5) : pad(10000 + self.workers.length * 7 % 90000 + 311, 5));
-        var dept = r.pick(depts);
-        var role = dept === 'الأمن' ? 'فرد أمن' : dept.indexOf('المخازن') >= 0 || dept.indexOf('النقل') >= 0 ? r.pick(['أمين مخزن', 'سائق رافعة شوكية', 'عامل تحميل']) : dept === 'الصيانة' ? r.pick(['فني صيانة كهرباء', 'فني صيانة ميكانيكا']) : r.chance(0.08) ? 'مشرف خط' : r.pick(['عامل إنتاج', 'مشغل ماكينة', 'فني تشغيل']);
-        var propensity = Math.exp(r.normal(-0.2, 0.6)); // lognormal → few repeat offenders
-        var wk = { id: wid, name: nm, siteId: s.id, dept: dept, shift: r.pick(['A', 'A', 'B', 'B', 'C']), role: role, contractor: contractor, propensity: propensity, enrolled: false, obs: 0, obsOk: 0, violations: 0, lastSeen: 0, joined: self.now - r.int(60, 2400) * DAY, demo: true };
-        self.workers.push(wk); self.workerById[wid] = wk;
-      }
     });
 
-    // Presenter profile — used by the live PPE model (can be renamed from the UI)
-    var omar = {
-      id: 'EMP-24017', name: 'عمر عباس', siteId: 'PLT-01', dept: 'التجميع والاختبار', shift: 'A', role: 'مشرف خط', contractor: false,
-      propensity: 0, enrolled: false, obs: 312, obsOk: 312, violations: 0, lastSeen: this.now - 2 * HOUR, joined: this.now - 410 * DAY,
-      presenter: true, demo: false, photo: null
-    };
-    this.workers.unshift(omar); this.workerById[omar.id] = omar;
-    this.presenterId = omar.id;
+    // Employees are real records only (added from the UI) — no generated workforce
+    this.presenterId = null;
+    this.faces = {};      // workerId → [128-D face descriptors]
+    this.att = {};        // 'workerId|YYYY-MM-DD' → attendance record
+    this.attSettings = JSON.parse(JSON.stringify(ATT_DEFAULTS));
 
     // live demo camera (browser webcam) — mapped to the PPE checkpoint of Plant 01
     var live = { id: 'P01-CAM-LIVE', siteId: 'PLT-01', zoneId: 'CHK', name: 'كاميرا العرض المباشر · نقطة فحص الوقاية', nameEn: 'Live demo camera · PPE checkpoint', kind: 'webcam', res: 'حسب الجهاز', fps: 30, protocol: 'WebRTC (getUserMedia)', status: 'standby', assessment: 'USE', lowLight: false, modules: ['NO_HELMET', 'NO_GLASSES', 'NO_VEST'], ip: 'local', scene: 'checkpoint', live: true };
@@ -503,6 +488,7 @@
   };
 
   Engine.prototype.pickWorker = function (r, siteWorkers, zone, hour) {
+    if (!siteWorkers.length) return null;
     var shift = shiftOf(hour);
     var depts = ZONE_DEPT[zone.kind];
     var pool = siteWorkers.filter(function (w) { return w.shift === shift && (!depts || depts.indexOf(w.dept) >= 0); });
@@ -530,6 +516,9 @@
     var t = TYPES[type];
     var identified = t.group !== 'ZONE' || type === 'RESTRICTED_ZONE';
     var w = identified && type !== 'INTRUSION' && r.chance(0.78) ? this.pickWorker(r, siteWorkers, z, hour) : null;
+    // simulated events are not tied to people; the department still comes from the zone (keeps BBS by department)
+    var zd = (ZONE_DEPT[z.kind] || []).filter(function (d) { return DEPTS[s.profile].indexOf(d) >= 0; });
+    var dept = w ? w.dept : identified && type !== 'INTRUSION' ? r.pick(zd.length ? zd : DEPTS[s.profile]) : null;
     var sev = this.severityFor(type, z, r);
     var age = this.now - ts;
     // status lifecycle
@@ -544,7 +533,7 @@
     var ev = {
       id: id, ts: ts, siteId: s.id, zoneId: z.id, cameraId: cam ? cam.id : null, type: type, group: t.group, sev: sev,
       conf: round(clamp(r.normal(0.88, 0.06), 0.62, 0.99), 2), status: status,
-      workerId: w ? w.id : null, dept: w ? w.dept : null, shift: shiftOf(hour),
+      workerId: w ? w.id : null, dept: dept, shift: shiftOf(hour),
       assignee: status === 'OPEN' ? null : ('مشرف السلامة — الوردية ' + ({ A: 'أ', B: 'ب', C: 'ج' })[shiftOf(hour)]),
       ackTs: ackTs, resTs: resTs, durationSec: t.group === 'PPE' ? Math.round(clamp(r.normal(95, 60), 12, 900)) : Math.round(clamp(r.normal(25, 15), 3, 180)),
       evidence: { kind: 'sim', frames: 3, clipSec: 10, seed: hashStr(id) },
@@ -844,6 +833,7 @@
     var s = this.site(w.siteId);
     var o = {}; for (var k in w) if (k !== 'propensity') o[k] = w[k];
     o.siteName = s ? s.name : '';
+    o.enrolled = !!(this.faces[id] && this.faces[id].length); o.faces = this.faces[id] ? this.faces[id].length : 0;
     o.compliance = w.obs ? round(100 * w.obsOk / w.obs, 1) : null;
     o.events = evs.slice(0, 200); o.byType = byType;
     o.violations = evs.length;
@@ -867,7 +857,7 @@
       total: arr.length, avgCompliance: sumObs ? round(100 * sumOk / sumObs, 1) : null, repeat: arr.filter(function (w) { return w.violations >= 3; }).length,
       items: arr.slice(0, lim).map(function (w) {
         var s = self.site(w.siteId);
-        return { id: w.id, name: w.name, siteId: w.siteId, siteName: s ? s.name : '', dept: w.dept, shift: w.shift, role: w.role, contractor: w.contractor, violations: w.violations, compliance: w.obs ? round(100 * w.obsOk / w.obs, 1) : null, lastSeen: w.lastSeen, enrolled: !!w.enrolled, presenter: !!w.presenter, photo: w.photo || null };
+        return { id: w.id, name: w.name, siteId: w.siteId, siteName: s ? s.name : '', dept: w.dept, shift: w.shift, role: w.role, phone: w.phone || '', contractor: w.contractor, violations: w.violations, compliance: w.obs ? round(100 * w.obsOk / w.obs, 1) : null, lastSeen: w.lastSeen, enrolled: !!(self.faces[w.id] && self.faces[w.id].length), faces: self.faces[w.id] ? self.faces[w.id].length : 0, photo: w.photo || null };
       })
     };
   };
@@ -992,13 +982,198 @@
   Engine.prototype.upsertWorker = function (data) {
     var w = data.id ? this.workerById[data.id] : null;
     if (!w) {
-      var id = data.id || ('EMP-' + pad(24100 + this.workers.length, 5));
-      w = { id: id, name: data.name || 'عامل جديد', siteId: data.siteId || 'PLT-01', dept: data.dept || 'التجميع والاختبار', shift: data.shift || 'A', role: data.role || 'عامل إنتاج', contractor: false, propensity: 0, enrolled: false, obs: 0, obsOk: 0, violations: 0, lastSeen: 0, joined: Date.now(), demo: false };
+      var id = data.id && /^[A-Za-z0-9_-]{1,32}$/.test(data.id) ? String(data.id) : null, n = 1;
+      while (!id || this.workerById[id]) id = 'EMP-' + pad(n++, 4);
+      w = { id: id, name: data.name || 'موظف جديد', siteId: data.siteId || 'PLT-01', dept: data.dept || 'غير محدد', shift: data.shift || 'A', role: data.role || 'موظف', phone: '', contractor: false, propensity: 0, enrolled: false, obs: 0, obsOk: 0, violations: 0, lastSeen: 0, joined: data.joined || Date.now(), demo: false };
       this.workers.unshift(w); this.workerById[id] = w;
     }
-    ['name', 'siteId', 'dept', 'shift', 'role', 'enrolled', 'photo'].forEach(function (k) { if (data[k] !== undefined) w[k] = data[k]; });
+    ['name', 'siteId', 'dept', 'shift', 'role', 'phone', 'enrolled', 'photo'].forEach(function (k) { if (data[k] !== undefined) w[k] = data[k]; });
+    if (!this.attSettings.shifts[w.shift]) w.shift = 'A';
     this.emit('worker', { id: w.id, name: w.name, enrolled: w.enrolled });
     return this.workerProfile(w.id);
+  };
+
+  Engine.prototype.removeWorker = function (id) {
+    var w = this.workerById[id]; if (!w) return null;
+    this.workers = this.workers.filter(function (x) { return x.id !== id; });
+    delete this.workerById[id]; delete this.faces[id];
+    var att = this.att; Object.keys(att).forEach(function (k) { if (att[k].workerId === id) delete att[k]; });
+    this.logAudit('مدير الموارد البشرية', 'حذف موظف', id + ' · ' + w.name);
+    this.emit('worker', { id: id, deleted: true });
+    this.emit('faces', { workerId: id, count: 0 });
+    return { id: id, deleted: true };
+  };
+
+  /* ---------------- face templates (128-D descriptors, shared by every screen) ---------------- */
+  Engine.prototype.setFaces = function (workerId, descriptors, mode) {
+    var w = this.workerById[workerId]; if (!w) return null;
+    var clean = (descriptors || []).filter(function (d) { return d && d.length === 128; }).map(function (d) { return Array.prototype.map.call(d, function (x) { return round(+x, 5); }); });
+    var list = (mode === 'replace' ? [] : (this.faces[workerId] || [])).concat(clean).slice(-10);
+    if (list.length) this.faces[workerId] = list; else delete this.faces[workerId];
+    w.enrolled = list.length > 0;
+    this.emit('faces', { workerId: workerId, count: list.length });
+    return { workerId: workerId, count: list.length, descriptors: list };
+  };
+
+  /* ---------------- attendance: first sighting of the shift-day = check-in, last = check-out ---------------- */
+  function dayStr(lp) { return lp.y + '-' + pad(lp.mo + 1, 2) + '-' + pad(lp.d, 2); }
+  function dayStartOf(day) { var p = String(day).split('-'); return localDayStart(Date.UTC(+p[0], +p[1] - 1, +p[2], 12), 'Africa/Cairo'); }
+  Engine.prototype.shiftOfWorker = function (w) { return this.attSettings.shifts[w.shift] ? w.shift : 'A'; };
+  // a sighting belongs to the shift-day whose start is the latest one ≤ ts + 3 h (early arrivals and night shifts land on the right day)
+  Engine.prototype.attDay = function (ts, shift) {
+    var sh = this.attSettings.shifts[shift] || this.attSettings.shifts.A;
+    return dayStr(localParts(ts + (180 - hmToMin(sh.start)) * MIN, 'Africa/Cairo'));
+  };
+  Engine.prototype.shiftWindow = function (day, shift) {
+    var sh = this.attSettings.shifts[shift] || this.attSettings.shifts.A, d0 = dayStartOf(day);
+    var s = hmToMin(sh.start), e = hmToMin(sh.end);
+    return { start: d0 + s * MIN, end: d0 + (e <= s ? e + 1440 : e) * MIN };
+  };
+  Engine.prototype.isWeekend = function (day) { return this.attSettings.weekend.indexOf(new Date(dayStartOf(day) + 12 * HOUR).getUTCDay()) >= 0; };
+  Engine.prototype.attendanceLookup = function (workerId, ts) {
+    var w = this.workerById[workerId]; if (!w) return null;
+    var day = this.attDay(ts, this.shiftOfWorker(w));
+    return { day: day, rec: this.att[workerId + '|' + day] || null };
+  };
+  Engine.prototype.attendanceSighting = function (data) {
+    var w = this.workerById[data.workerId]; if (!w) return null;
+    var ts = +data.ts || Date.now(), shift = this.shiftOfWorker(w), day = this.attDay(ts, shift), key = w.id + '|' + day;
+    var rec = this.att[key], isNew = !rec;
+    if (rec && ts >= rec.firstTs && ts - rec.lastTs < this.attSettings.gapSec * 1000) return { accepted: false, ts: ts, isNew: false, record: this.attDecorate(rec) };
+    if (!rec) {
+      rec = this.att[key] = { workerId: w.id, day: day, shift: shift, firstTs: ts, lastTs: ts, n: 0, firstCam: data.cameraId || null, lastCam: data.cameraId || null, inImg: data.inImg || data.image || null, outImg: null, outImgTs: 0, conf: data.conf != null ? round(+data.conf, 2) : null };
+    }
+    if (ts < rec.firstTs) { rec.firstTs = ts; rec.firstCam = data.cameraId || rec.firstCam; }
+    if (ts > rec.lastTs) { rec.lastTs = ts; rec.lastCam = data.cameraId || rec.lastCam; }
+    rec.n++;
+    if (!isNew && (data.outImg || data.image)) { rec.outImg = data.outImg || data.image; rec.outImgTs = ts; }
+    if (ts > w.lastSeen) w.lastSeen = ts;
+    var d = this.attDecorate(rec);
+    if (isNew || ts - (rec.emitTs || 0) > 60e3) { rec.emitTs = ts; this.emit('attendance', { kind: isNew ? 'IN' : 'SEEN', record: d }); }
+    return { accepted: true, ts: ts, isNew: isNew, record: d };
+  };
+  Engine.prototype.attStatus = function (rec, day, shift, now) {
+    var A = this.attSettings, win = this.shiftWindow(day, shift);
+    var o = { day: day, shift: shift, start: win.start, end: win.end };
+    if (!rec) {
+      o.status = this.isWeekend(day) ? 'OFF' : now > win.start + A.graceMin * MIN ? 'ABSENT' : 'PENDING';
+      return o;
+    }
+    o.firstTs = rec.firstTs; o.lastTs = rec.lastTs; o.firstCam = rec.firstCam; o.lastCam = rec.lastCam; o.inImg = rec.inImg; o.outImg = rec.outImg; o.sightings = rec.n;
+    o.lateMin = Math.max(0, Math.round((rec.firstTs - win.start) / MIN));
+    o.late = o.lateMin > A.graceMin;
+    o.workedMin = Math.round((rec.lastTs - rec.firstTs) / MIN);
+    o.overtimeMin = Math.max(0, Math.round((rec.lastTs - win.end) / MIN));
+    var over = now > win.end + 2 * HOUR || now - rec.lastTs > 6 * HOUR; // the shift is over → the last sighting counts as check-out
+    o.status = over ? 'OUT' : 'IN';
+    o.earlyMin = over ? Math.max(0, Math.round((win.end - rec.lastTs) / MIN)) : 0;
+    o.early = over && o.earlyMin > A.earlyMin;
+    o.missingOut = over && o.workedMin < 5;
+    return o;
+  };
+  Engine.prototype.attDecorate = function (rec) {
+    var w = this.workerById[rec.workerId], o = this.attStatus(rec, rec.day, rec.shift, Date.now());
+    o.workerId = rec.workerId; o.workerName = w ? w.name : rec.workerId; o.dept = w ? w.dept : ''; o.photo = w ? w.photo || null : null;
+    return o;
+  };
+  Engine.prototype.attendanceDay = function (q) {
+    q = q || {};
+    var self = this, now = Date.now(), f = inSite(q.site);
+    var day = q.day || dayStr(localParts(now, 'Africa/Cairo'));
+    var tot = { employees: 0, present: 0, inNow: 0, late: 0, early: 0, absent: 0, off: 0, pending: 0 };
+    var items = this.workers.filter(function (w) { return f(w) && dayStr(localParts(w.joined || 0, 'Africa/Cairo')) <= day; }).map(function (w) {
+      var rec = self.att[w.id + '|' + day];
+      var o = self.attStatus(rec, day, rec ? rec.shift : self.shiftOfWorker(w), now);
+      o.workerId = w.id; o.workerName = w.name; o.dept = w.dept; o.role = w.role; o.photo = w.photo || null; o.siteId = w.siteId;
+      tot.employees++;
+      if (rec) { tot.present++; if (o.status === 'IN') tot.inNow++; if (o.late) tot.late++; if (o.early) tot.early++; }
+      else if (o.status === 'ABSENT') tot.absent++; else if (o.status === 'OFF') tot.off++; else tot.pending++;
+      return o;
+    });
+    var rank = { IN: 0, OUT: 1, PENDING: 2, ABSENT: 3, OFF: 4 };
+    items.sort(function (a, b) { return (rank[a.status] - rank[b.status]) || ((a.firstTs || 0) - (b.firstTs || 0)) || String(a.workerName).localeCompare(String(b.workerName)); });
+    return { day: day, totals: tot, items: items, settings: this.attSettings };
+  };
+  // one row per employee per day — used by the monthly profile view and the Excel/CSV export
+  Engine.prototype.attendanceRange = function (q) {
+    q = q || {};
+    var self = this, now = Date.now(), f = inSite(q.site);
+    var today = dayStr(localParts(now, 'Africa/Cairo'));
+    var to = q.to || today, from = q.from || to, days = [];
+    for (var t = dayStartOf(from), end = dayStartOf(to), k = 0; t <= end && k < 92; t += DAY, k++) days.push(dayStr(localParts(t + 12 * HOUR, 'Africa/Cairo')));
+    var ws = this.workers.filter(function (w) { return f(w) && (!q.worker || w.id === q.worker); });
+    var rows = [];
+    ws.forEach(function (w) {
+      days.forEach(function (day) {
+        if (day > today) return;
+        var rec = self.att[w.id + '|' + day];
+        if (!rec && day < dayStr(localParts(w.joined || 0, 'Africa/Cairo'))) return; // not employed yet
+        var o = self.attStatus(rec, day, rec ? rec.shift : self.shiftOfWorker(w), now);
+        o.workerId = w.id; o.workerName = w.name; o.dept = w.dept; o.role = w.role;
+        rows.push(o);
+      });
+    });
+    var sum = { days: 0, present: 0, late: 0, early: 0, absent: 0, workedMin: 0, lateMin: 0, overtimeMin: 0 };
+    rows.forEach(function (o) {
+      if (o.status === 'OFF' || o.status === 'PENDING') return;
+      sum.days++;
+      if (o.status === 'ABSENT') { sum.absent++; return; }
+      sum.present++; sum.workedMin += o.workedMin; sum.overtimeMin += o.overtimeMin;
+      if (o.late) { sum.late++; sum.lateMin += o.lateMin; }
+      if (o.early) sum.early++;
+    });
+    return { from: from, to: to, rows: rows, summary: sum };
+  };
+  Engine.prototype.setAttendanceSettings = function (d) {
+    var A = this.attSettings;
+    if (d.shifts) Object.keys(A.shifts).forEach(function (k) { var x = d.shifts[k]; if (!x) return; ['name', 'start', 'end'].forEach(function (f) { if (x[f] !== undefined && (f === 'name' || /^\d{1,2}:\d{2}$/.test(x[f]))) A.shifts[k][f] = String(x[f]); }); });
+    ['graceMin', 'earlyMin', 'gapSec'].forEach(function (k) { if (d[k] != null && !isNaN(+d[k])) A[k] = clamp(Math.round(+d[k]), 0, 600); });
+    if (Array.isArray(d.weekend)) A.weekend = d.weekend.map(Number).filter(function (x) { return x >= 0 && x <= 6; });
+    this.emit('attendance', { kind: 'SETTINGS' });
+    return A;
+  };
+
+  /* ---------------- IP cameras connected through the server (registered so events can reference them) ---------------- */
+  Engine.prototype.upsertCamera = function (d) {
+    var c = this.camById[d.id];
+    if (!c) {
+      c = { id: d.id, siteId: 'PLT-01', zoneId: 'CHK', kind: 'ipcam', res: 'حسب الكاميرا', fps: 0, status: 'standby', assessment: 'USE', lowLight: false, modules: ['NO_HELMET', 'NO_GLASSES', 'NO_VEST', 'FIRE_DETECTED', 'SMOKING_DETECTED'], ip: '', scene: 'checkpoint', live: true, ipcam: true };
+      this.cameras.unshift(c); this.camById[c.id] = c;
+    }
+    ['name', 'protocol', 'ip', 'status'].forEach(function (k) { if (d[k] !== undefined) c[k] = d[k]; });
+    if (d.siteId && this.site(d.siteId)) c.siteId = d.siteId;
+    c.nameEn = c.name;
+    return c;
+  };
+  Engine.prototype.removeCamera = function (id) {
+    if (!this.camById[id] || !this.camById[id].ipcam) return;
+    this.cameras = this.cameras.filter(function (c) { return c.id !== id; }); delete this.camById[id];
+  };
+
+  /* ---------------- persistence: which POSTs are journaled, and how a journal line is replayed ---------------- */
+  Engine.prototype.journalEntry = function (path, body, res) {
+    var p = path.replace(/\/+$/, ''), m;
+    if (p === '/api/v1/events') return ['event', Object.assign({}, body, { ts: res.ts })];
+    if ((m = /^\/api\/v1\/events\/([^/]+)\/action$/.exec(p))) return ['action', { id: m[1], action: body.action, body: body }];
+    if (p === '/api/v1/workers') return ['worker', Object.assign({}, body, { id: res.id, joined: res.joined })];
+    if ((m = /^\/api\/v1\/workers\/([^/]+)\/delete$/.exec(p))) return ['worker_del', { id: decodeURIComponent(m[1]) }];
+    if (p === '/api/v1/gate/log') return ['gate', Object.assign({}, body, { ts: res.ts, lane: res.lane })];
+    if (p === '/api/v1/vehicles') return ['vehicle', body];
+    if (p === '/api/v1/faces') return ['face', { workerId: res.workerId, descriptors: res.descriptors }];
+    if (p === '/api/v1/attendance/sighting') { if (!res.accepted) return null; var b = Object.assign({}, body, { ts: res.ts }); if (!res.isNew) delete b.image; return ['att', b]; }
+    if (p === '/api/v1/attendance/settings') return ['attset', body];
+    return null;
+  };
+  Engine.prototype.replay = function (kind, p, ts) {
+    if (kind === 'event') this.addEvent(Object.assign({}, p, { ts: p.ts || ts }));
+    else if (kind === 'worker') this.upsertWorker(p);
+    else if (kind === 'worker_del') this.removeWorker(p.id);
+    else if (kind === 'face') this.setFaces(p.workerId, p.descriptors, 'replace');
+    else if (kind === 'att') this.attendanceSighting(Object.assign({}, p, { ts: p.ts || ts }));
+    else if (kind === 'attset') this.setAttendanceSettings(p);
+    else if (kind === 'gate') this.addGateRead(Object.assign({}, p, { ts: p.ts || ts }));
+    else if (kind === 'vehicle') this.upsertVehicle(p);
+    else if (kind === 'action') this.eventAction(p.id, p.action, p.body || {});
   };
 
   Engine.prototype.addGateRead = function (data) {
@@ -1174,7 +1349,7 @@
   Engine.prototype.meta = function () {
     return {
       version: VERSION, mode: this.mode, sites: SITES.map(function (s) { return { id: s.id, code: s.code, name: s.name, nameEn: s.nameEn, sub: s.sub, type: s.type, country: s.country, tz: s.tz, cams: s.cams, gates: s.gates.map(function (g) { return { id: s.id + '-' + g[0], name: g[1] }; }), workers: s.workers, zones: PROFILES[s.profile].map(function (z) { return { id: z.id, name: z.name, nameEn: z.nameEn, kind: z.kind, restricted: z.restricted, required: z.required }; }) }; }),
-      types: TYPES, groups: GROUP_AR, sevAr: SEV_AR, ppe: PPE, ppeOrder: PPE_ORDER, presenterId: this.presenterId,
+      types: TYPES, groups: GROUP_AR, sevAr: SEV_AR, ppe: PPE, ppeOrder: PPE_ORDER, presenterId: this.presenterId, shifts: this.attSettings.shifts,
       demo: true, notice: 'بيانات عرض توضيحية — Simulated demo data'
     };
   };
@@ -1219,6 +1394,11 @@
           case 'system': return ok(this.healthSnapshot());
           case 'audit': return ok({ items: this.audit.slice(0, +query.limit || 100) });
           case 'reports': return ok({ items: this.reports });
+          case 'faces': return ok({ items: this.faces });
+          case 'attendance':
+            if (r[1] === 'range') return ok(this.attendanceRange(query));
+            if (r[1] === 'settings') return ok(this.attSettings);
+            return ok(this.attendanceDay(query));
         }
       } else if (m === 'POST') {
         switch (r[0]) {
@@ -1226,7 +1406,14 @@
             if (r[1] && r[2] === 'action') { var d = this.eventAction(r[1], body.action, body); return d ? ok(d) : nf; }
             return ok(this.addEvent(body));
           case 'observe': return ok(this.observe(body.workerId, !!body.compliant));
-          case 'workers': return ok(this.upsertWorker(body));
+          case 'workers':
+            if (r[1] && r[2] === 'delete') { var rw = this.removeWorker(decodeURIComponent(r[1])); return rw ? ok(rw) : nf; }
+            return ok(this.upsertWorker(body));
+          case 'faces': var fc = this.setFaces(body.workerId, body.descriptors, body.mode); return fc ? ok(fc) : nf;
+          case 'attendance':
+            if (r[1] === 'sighting') { var sg = this.attendanceSighting(body); return sg ? ok(sg) : nf; }
+            if (r[1] === 'settings') return ok(this.setAttendanceSettings(body));
+            return nf;
           case 'gate': if (r[1] === 'log') return ok(this.addGateRead(body)); return nf;
           case 'vehicles': return ok(this.upsertVehicle(body));
           case 'reports': return ok(this.addReport(body));

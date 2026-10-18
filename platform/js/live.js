@@ -197,17 +197,260 @@
     return ready;
   }
 
-  /* face database (local only — never leaves the device) */
-  function faceDB() { try { return JSON.parse(localStorage.getItem('egic-faces') || '{}'); } catch (e) { return {}; } }
-  function saveFaceDB(db) { try { localStorage.setItem('egic-faces', JSON.stringify(db)); } catch (e) { } S.faceIndex = db; }
-  var matcherCache = null, matcherKey = '';
+  /* ------------------------------------------------------------------ */
+  /* IP cameras: the server reads RTSP / MJPEG / snapshot URLs and re-serves  */
+  /* them as same-origin MJPEG (/api/v1/ipcams/:id/mjpeg)                   */
+  /* ------------------------------------------------------------------ */
+  // POST that may need the ADMIN_TOKEN (camera changes, deleting employees)
+  function adminPost(path, body) {
+    var token = null; try { token = sessionStorage.getItem('egic-admin-token'); } catch (e) { }
+    function go(t) { return fetch(API.state.base + '/api/v1/' + path, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, t ? { 'X-Admin-Token': t } : {}), body: JSON.stringify(body || {}) }); }
+    return go(token).then(function (r) {
+      if (r.status !== 401) return r;
+      token = window.prompt('رمز الإدارة (ADMIN_TOKEN):'); if (!token) throw new Error('مطلوب رمز الإدارة');
+      try { sessionStorage.setItem('egic-admin-token', token); } catch (e) { }
+      return go(token);
+    }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j && j.error || r.status); return j; }); });
+  }
+  var CAM_EXAMPLES = [
+    ['Hikvision', 'rtsp://admin:password@192.168.1.64:554/Streaming/Channels/101'],
+    ['Dahua', 'rtsp://admin:password@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0'],
+    ['ONVIF / عام', 'rtsp://user:password@IP:554/stream1'],
+    ['IP Webcam (موبايل أندرويد)', 'http://192.168.1.20:8080/video'],
+    ['صورة Snapshot', 'http://admin:password@192.168.1.64/ISAPI/Streaming/channels/101/picture']
+  ];
+  // camera manager + picker. onPick(src) is optional: without it the dialog only manages cameras
+  function ipCamDialog(onPick) {
+    if (API.state.mode !== 'server') { U.toast('كاميرات IP تحتاج سيرفر المنصة', 'شغّل: node server/server.js أو افتح النسخة المنشورة.', { kind: 'critical', ms: 8000 }); return; }
+    var list = h('div', { style: { display: 'grid', gap: '8px' } });
+    var name = h('input', { class: 'input', placeholder: 'مثال: بوابة الموظفين' });
+    var urlIn = h('input', { class: 'input mono', dir: 'ltr', placeholder: 'rtsp://user:pass@192.168.1.64:554/…', style: { fontSize: '12px' } });
+    var siteSel = U.select(S.meta.sites.map(function (s) { return [s.id, s.name]; }), 'PLT-01', function () { });
+    var viaSel = h('select', { class: 'select' }, h('option', { value: '', text: 'مباشر من السيرفر' }));
+    var agentsBox = h('div', { style: { display: 'grid', gap: '8px' } }), setupBox = h('div');
+    var serverUrl = (API.state.base || location.origin).replace(/\/$/, '');
+    var cloud = !/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname);
+    var msg = h('div', { class: 'muted', style: { fontSize: '12px', lineHeight: '1.7' } });
+    var preview = h('img', { alt: '', style: { display: 'none', width: '100%', borderRadius: '10px', border: '1px solid var(--line-2)' } });
+    var editId = null;
+    var testBtn = h('button', { class: 'btn', text: 'اختبار الاتصال' }), saveBtn = h('button', { class: 'btn btn--primary', text: 'حفظ الكاميرا' });
+    var examples = h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } }, CAM_EXAMPLES.map(function (x) { return h('button', { class: 'btn btn--xs btn--ghost', type: 'button', text: x[0], title: x[1], onclick: function () { urlIn.value = x[1]; urlIn.focus(); } }); }));
+    function load() {
+      fetch(API.state.base + '/api/v1/ipcams', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+        clear(list);
+        renderAgents(j.agents || []);
+        if (!j.items.length) list.appendChild(h('div', { class: 'muted', style: { fontSize: '12.5px' }, text: 'لا توجد كاميرات محفوظة بعد — أضف أول كاميرا من النموذج بالأسفل.' }));
+        j.items.forEach(function (c) {
+          var dot = c.state === 'live' ? 'dot--on' : c.state === 'error' ? 'dot--off' : 'dot--idle';
+          list.appendChild(h('div', { style: { display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px', alignItems: 'center', padding: '10px 12px', borderRadius: '10px', background: 'var(--bg-3)', border: '1px solid var(--line-1)' } },
+            h('div', { style: { minWidth: 0 } }, h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } }, h('span', { class: 'dot ' + dot }), h('b', { text: c.name }), h('span', { class: 'chip mono', text: c.protocol }), c.agentId ? h('span', { class: 'chip', title: c.agentOnline ? 'الوسيط متصل' : 'الوسيط مش متصل', text: (c.agentOnline ? '📡 ' : '⚠️ ') + c.agentName }) : null),
+              h('div', { class: 'mono muted', dir: 'ltr', style: { fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'start' }, text: c.url }),
+              c.error ? h('div', { style: { fontSize: '11.5px', color: '#ff9b9b' }, text: c.error }) : null),
+            h('div', { style: { display: 'flex', gap: '6px' } },
+              onPick ? h('button', { class: 'btn btn--xs btn--accent', text: 'تشغيل', onclick: function () { U.closeModal(); onPick({ kind: 'ipcam', id: c.id, name: c.name, url: API.state.base + '/api/v1/ipcams/' + c.id + '/mjpeg' }); } }) : null,
+              h('button', { class: 'btn btn--xs', text: 'تعديل', onclick: function () { editId = c.id; name.value = c.name; urlIn.value = c.url; siteSel.value = c.siteId || 'PLT-01'; viaSel.value = c.agentId || ''; saveBtn.textContent = 'حفظ التعديل'; msg.textContent = 'كلمة المرور المخفية (****) هتفضل زي ما هي لو مغيرتهاش.'; } }),
+              h('button', { class: 'btn btn--xs btn--danger', text: 'حذف', onclick: function () { if (!window.confirm('حذف الكاميرا «' + c.name + '»؟')) return; adminPost('ipcams/' + c.id + '/delete').then(load).catch(function (e) { msg.textContent = 'تعذر الحذف: ' + e.message; }); } }))));
+        });
+      }).catch(function (e) { clear(list).appendChild(h('div', { class: 'muted', text: 'تعذر تحميل الكاميرات: ' + e.message })); });
+    }
+    function renderAgents(ags) {
+      var keep = viaSel.value;
+      while (viaSel.options.length > 1) viaSel.remove(1);
+      ags.forEach(function (a) { viaSel.appendChild(h('option', { value: a.id, text: 'عن طريق وسيط الشبكة: ' + a.name + (a.online ? '' : ' (مش متصل)') })); });
+      viaSel.value = keep && ags.some(function (a) { return a.id === keep; }) ? keep : (editId ? '' : cloud && ags[0] ? ags[0].id : '');
+      clear(agentsBox);
+      ags.forEach(function (a) {
+        agentsBox.appendChild(h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 10px', borderRadius: '10px', background: 'var(--bg-3)', border: '1px solid var(--line-1)' } },
+          h('span', { class: 'dot ' + (a.online ? 'dot--on' : 'dot--off') }), h('b', { text: a.name }),
+          h('span', { class: 'muted', style: { fontSize: '11.5px' }, text: a.online ? 'متصل · ' + (a.host || '') + ' · ' + a.cams + ' كاميرا' : a.lastSeen ? 'آخر اتصال ' + U.ago(a.lastSeen) : 'لسه ماتشغلش' }),
+          h('span', { style: { flex: 1 } }),
+          h('button', { class: 'btn btn--xs btn--danger', text: 'حذف', onclick: function () { if (!window.confirm('حذف الوسيط «' + a.name + '»؟ الكاميرات اللي عليه هتتحول «مباشر من السيرفر».')) return; adminPost('agents/' + a.id + '/delete').then(load).catch(function (e) { msg.textContent = '✗ ' + e.message; }); } })));
+      });
+    }
+    function newAgent() {
+      var nm = window.prompt('اسم الوسيط (مثال: كمبيوتر أمن البوابة):', 'وسيط المصنع'); if (nm === null) return;
+      adminPost('agents', { name: nm }).then(function (a) {
+        var bat = agentLauncher(serverUrl, a.key, a.name);
+        var cmd = 'node edge-agent.js --server ' + serverUrl + ' --key ' + a.key;
+        clear(setupBox).appendChild(h('div', { style: { display: 'grid', gap: '8px', padding: '12px', borderRadius: '10px', border: '1px solid rgba(69,212,140,.45)', background: 'rgba(69,212,140,.06)' } },
+          h('b', { text: '✓ اتعمل الوسيط «' + a.name + '» — شغّله على كمبيوتر جوه شبكة المصنع:' }),
+          h('div', { style: { fontSize: '12.5px', lineHeight: '1.9' } }, '1) نزّل ملف التشغيل وحطه في فولدر لوحده على الكمبيوتر ده.', h('br'), '2) افتحه دبل كليك. أول مرة هينزّل البرنامج و ffmpeg لوحده (محتاج Node.js — لو مش متثبت هيفتحلك صفحة التحميل).', h('br'), '3) سيب الشباك مفتوح — هتلاقي النقطة جنب الوسيط بقت خضرا.'),
+          h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+            h('button', { class: 'btn btn--sm btn--accent', text: '⬇ نزّل ملف التشغيل (Windows)', onclick: function () { var el = document.createElement('a'); el.href = URL.createObjectURL(new Blob([bat], { type: 'application/octet-stream' })); el.download = 'EGIC-Agent.bat'; document.body.appendChild(el); el.click(); setTimeout(function () { URL.revokeObjectURL(el.href); el.remove(); }, 500); } }),
+            h('a', { class: 'btn btn--sm', href: serverUrl + '/agent/edge-agent.js', download: 'edge-agent.js', text: '⬇ edge-agent.js (Linux / Raspberry Pi)' })),
+          h('div', { class: 'muted', style: { fontSize: '11.5px' }, text: 'أمر التشغيل اليدوي (المفتاح ده بيظهر مرة واحدة بس — احتفظ بيه):' }),
+          h('div', { class: 'code mono', dir: 'ltr', style: { fontSize: '11px', userSelect: 'all', wordBreak: 'break-all', textAlign: 'left' }, text: cmd })));
+        load();
+      }).catch(function (e) { msg.textContent = '✗ ' + e.message; });
+    }
+    testBtn.addEventListener('click', function () {
+      testBtn.disabled = true; preview.style.display = 'none'; msg.textContent = 'جارٍ الاتصال بالكاميرا من السيرفر… (حتى 20 ثانية)';
+      adminPost('ipcams/test', { url: urlIn.value.trim(), id: editId, agentId: viaSel.value || null }).then(function (j) {
+        if (j.ok) { preview.src = j.image; preview.style.display = ''; msg.textContent = '✓ الكاميرا شغالة (' + ({ mjpeg: 'MJPEG', snapshot: 'Snapshot', ffmpeg: 'RTSP / ffmpeg' })[j.kind] + ') — اضغط «حفظ الكاميرا».'; }
+        else msg.textContent = '✗ ' + j.error + (!viaSel.value && cloud ? ' — لو الكاميرا على شبكة المصنع، اختار «عن طريق وسيط الشبكة».' : '');
+      }).catch(function (e) { msg.textContent = '✗ ' + e.message; }).then(function () { testBtn.disabled = false; });
+    });
+    saveBtn.addEventListener('click', function () {
+      saveBtn.disabled = true;
+      adminPost('ipcams', { id: editId, name: name.value.trim(), url: urlIn.value.trim(), siteId: siteSel.value, agentId: viaSel.value || null }).then(function (c) {
+        U.toast('تم حفظ الكاميرا', c.name); editId = null; name.value = ''; urlIn.value = ''; preview.style.display = 'none'; saveBtn.textContent = 'حفظ الكاميرا'; msg.textContent = ''; load();
+        API.get('cameras').then(function (r) { r.items.forEach(function (x) { S.cams[x.id] = x; }); });
+      }).catch(function (e) { msg.textContent = '✗ ' + e.message; }).then(function () { saveBtn.disabled = false; });
+    });
+    U.openModal('🌐 كاميرات IP / NVR', h('div', { style: { display: 'grid', gap: '14px' } },
+      h('div', { class: 'muted', style: { fontSize: '12.5px', lineHeight: '1.8' } }, cloud ? 'المنصة أونلاين، فمش هتشوف كاميرات شبكة المصنع مباشرة. شغّل «وسيط الشبكة» على أي كمبيوتر في المصنع: هو اللي بيقرا الكاميرات ويبعتها هنا، من غير فتح أي بورت في الراوتر.' : 'السيرفر هو اللي بيتصل بالكاميرا (RTSP أو MJPEG أو Snapshot) — لازم تكون على نفس الشبكة. ولو الكاميرات في مكان تاني، استخدم «وسيط الشبكة».'),
+      list,
+      h('div', { style: { borderTop: '1px solid var(--line-1)', paddingTop: '12px', display: 'grid', gap: '8px' } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('div', { class: 'card-t', text: '📡 وسطاء الشبكة (Edge Agents)' }), h('span', { style: { flex: 1 } }), h('button', { class: 'btn btn--xs', text: '+ إضافة وسيط', onclick: newAgent })),
+        agentsBox, setupBox),
+      h('div', { style: { borderTop: '1px solid var(--line-1)', paddingTop: '12px', display: 'grid', gap: '10px' } },
+        h('div', { class: 'card-t', text: 'إضافة كاميرا' }),
+        h('div', { class: 'grid g-2', style: { gap: '10px' } }, h('label', { class: 'field' }, h('span', { text: 'اسم الكاميرا' }), name), h('label', { class: 'field' }, h('span', { text: 'الموقع' }), siteSel)),
+        h('label', { class: 'field' }, h('span', { text: 'رابط البث (زي ما هو على شبكة المصنع)' }), urlIn),
+        h('label', { class: 'field' }, h('span', { text: 'طريقة الاتصال' }), viaSel),
+        h('div', null, h('div', { class: 'muted', style: { fontSize: '11.5px', marginBottom: '6px' }, text: 'أمثلة (اضغط لتعبئة الشكل ثم عدّل الـ IP وكلمة المرور) — لو كلمة المرور فيها @ أو : اكتبها %40 أو %3A:' }), examples),
+        h('div', { class: 'row', style: { display: 'flex', gap: '8px' } }, testBtn, saveBtn), msg, preview)));
+    load();
+  }
+  // Windows launcher: fetches the agent + ffmpeg on first run, then keeps the agent running (restarts it if it stops)
+  function agentLauncher(server, key, name) {
+    return ['@echo off', 'chcp 65001 >nul', 'title EGIC Edge Agent', 'cd /d "%~dp0"', 'echo EGIC Edge Agent - ' + String(name).replace(/[^\x20-\x7e]/g, '').trim(),
+      'where node >nul 2>nul', 'if errorlevel 1 (', '  echo Node.js 18+ is required. Install it, then run this file again.', '  start https://nodejs.org/en/download', '  pause', '  exit /b 1', ')',
+      'if exist edge-agent.js goto ffmpeg', 'echo Downloading the agent...', 'powershell -NoProfile -Command "Invoke-WebRequest -UseBasicParsing \'' + server + '/agent/edge-agent.js\' -OutFile \'edge-agent.js\'"',
+      ':ffmpeg', 'if exist ffmpeg.exe goto run', 'echo Downloading ffmpeg for RTSP cameras - one time, about 90 MB...',
+      'powershell -NoProfile -Command "$z=Join-Path $env:TEMP \'egic-ffmpeg.zip\'; $d=Join-Path $env:TEMP \'egic-ffmpeg\'; Invoke-WebRequest -UseBasicParsing \'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip\' -OutFile $z; Expand-Archive $z $d -Force; Copy-Item (Get-ChildItem $d -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName \'ffmpeg.exe\'"',
+      ':run', 'node edge-agent.js --server "' + server + '" --key "' + key + '"', 'echo Agent stopped - restarting in 5 seconds...', 'timeout /t 5 >nul', 'goto run', ''].join('\r\n');
+  }
+  // attach an IP camera's MJPEG to a hidden <img>; resolves when the first frame arrives
+  function attachIpCam(src, el, st, onLost) {
+    clearInterval(st.phoneWatch); st.ipcam = src; st.phoneMode = 'mjpeg';
+    el.crossOrigin = 'anonymous';
+    el.src = src.url + '?t=' + Date.now();
+    var t0 = Date.now(), lostAt = 0;
+    st.phoneWatch = setInterval(function () {
+      if (st.srcKind !== 'ipcam') return clearInterval(st.phoneWatch);
+      fetch(API.state.base + '/api/v1/ipcams/' + src.id, { cache: 'no-store' }).then(function (x) { return x.json(); }).then(function (j) {
+        st.phoneFps = j.fps;
+        if (j.state === 'live') { lostAt = 0; return; }
+        if (j.state === 'error' && !lostAt) { lostAt = Date.now(); onLost(j.error); }
+      }).catch(function () { });
+    }, 3000);
+    return new Promise(function (res, rej) {
+      (function wait() {
+        if (st.srcKind !== 'ipcam') return rej(new Error('أُلغي'));
+        if (el.naturalWidth) return res(el);
+        if (Date.now() - t0 > 30000) return fetch(API.state.base + '/api/v1/ipcams/' + src.id).then(function (x) { return x.json(); }).then(function (j) { rej(new Error(j.error || 'لم يصل أي إطار من الكاميرا')); }, function () { rej(new Error('لم يصل أي إطار من الكاميرا')); });
+        setTimeout(wait, 150);
+      })();
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Face templates — stored on the server, shared by every screen          */
+  /* ------------------------------------------------------------------ */
+  var FACES = {}, facesP = null, matcherCache = null, matcherKey = '';
+  function loadFaces() {
+    facesP = API.get('faces').then(function (r) { FACES = r.items || {}; S.faceIndex = FACES; matcherKey = ''; return FACES; }).catch(function () { return FACES; });
+    return facesP;
+  }
+  API.on('faces', function () { loadFaces(); });
+  API.on('reset', function () { loadFaces(); });
+  // one-time move of face prints saved in this browser by the previous version → server
+  function migrateLocalFaces() {
+    var old = null; try { old = JSON.parse(localStorage.getItem('egic-faces') || 'null'); } catch (e) { }
+    if (!old) return;
+    var ids = Object.keys(old).filter(function (k) { return old[k] && old[k].length; });
+    Promise.all(ids.map(function (k) { return API.post('faces', { workerId: k, descriptors: old[k] }).catch(function () { return null; }); })).then(function () { try { localStorage.removeItem('egic-faces'); } catch (e) { } loadFaces(); });
+  }
+  function hasFaces() { return Object.keys(FACES).some(function (k) { return FACES[k] && FACES[k].length; }); }
   function matcher() {
-    var db = faceDB(), key = JSON.stringify(Object.keys(db).map(function (k) { return k + db[k].length; }));
+    if (!faceapi) return null;
+    var key = Object.keys(FACES).map(function (k) { return k + FACES[k].length; }).join(',');
     if (key === matcherKey) return matcherCache;
     matcherKey = key;
-    var labeled = Object.keys(db).filter(function (k) { return db[k].length; }).map(function (k) { return new faceapi.LabeledFaceDescriptors(k, db[k].map(function (d) { return new Float32Array(d); })); });
-    matcherCache = labeled.length ? new faceapi.FaceMatcher(labeled, 0.52) : null;
+    var labeled = Object.keys(FACES).filter(function (k) { return FACES[k].length; }).map(function (k) { return new faceapi.LabeledFaceDescriptors(k, FACES[k].map(function (d) { return new Float32Array(d); })); });
+    matcherCache = labeled.length ? new faceapi.FaceMatcher(labeled, 0.5) : null;
     return matcherCache;
+  }
+  function detectFaces(src) {
+    var m = matcher(); if (!m) return Promise.resolve([]);
+    return faceapi.detectAllFaces(src, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 })).withFaceLandmarks(true).withFaceDescriptors().then(function (res) {
+      return res.map(function (r) { var best = m.findBestMatch(r.descriptor), b = r.detection.box; return { box: { x1: b.x, y1: b.y, x2: b.x + b.width, y2: b.y + b.height }, label: best.label, dist: best.distance }; });
+    });
+  }
+  function faceCrop(src, box, size) {
+    var w = box.x2 - box.x1, pad = w * 0.35, c = document.createElement('canvas'); c.width = c.height = size || 192;
+    c.getContext('2d').drawImage(src, Math.max(0, box.x1 - pad), Math.max(0, box.y1 - pad * 1.2), w + pad * 2, (box.y2 - box.y1) + pad * 2.2, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.82);
+  }
+  // attendance: a face must match in 2 of the last 3 detections (≈ 1–2 s) before it counts; then at most one post a minute per person
+  function Sighter(cameraIdFn, onSeen) { this.votes = {}; this.sent = {}; this.cameraIdFn = cameraIdFn; this.onSeen = onSeen; }
+  Sighter.prototype.feed = function (faces, src) {
+    var now = Date.now(), self = this;
+    faces.forEach(function (f) {
+      if (f.label === 'unknown') return;
+      var v = self.votes[f.label] = (self.votes[f.label] || []).filter(function (t) { return now - t < 3000; }); v.push(now);
+      if (v.length < 2 || (self.sent[f.label] && now - self.sent[f.label] < 60000)) return;
+      self.sent[f.label] = now;
+      var img = null; try { img = faceCrop(src, f.box, 192); } catch (e) { }
+      API.post('attendance/sighting', { workerId: f.label, cameraId: self.cameraIdFn(), conf: Math.round((1 - f.dist) * 100) / 100, image: img }).then(function (r) { if (self.onSeen) self.onSeen(r, f, img); }).catch(function () { });
+    });
+  };
+
+  /* face enrolment — 5 samples from a live source (this dialog's own camera, or a running lab / attendance source) */
+  function enrollDialog(workerId, done, liveSrc) {
+    var own = !liveSrc, stream = null, closed = false;
+    var vid = h('video', { playsinline: true, muted: true, autoplay: true, style: { width: '100%', borderRadius: '12px', background: '#000', transform: own ? 'scaleX(-1)' : '' } });
+    var consent = h('input', { type: 'checkbox' });
+    var prog = h('div', { class: 'mono', style: { fontSize: '12.5px', minHeight: '18px' } });
+    var profSel = h('select', { class: 'select' });
+    API.get('workers', { limit: 1000 }).then(function (r) {
+      if (!r.items.length) profSel.appendChild(h('option', { value: '', text: 'لا يوجد موظفون — أضف موظفًا أولًا' }));
+      r.items.forEach(function (w) { var o = h('option', { value: w.id, text: w.name + ' · ' + w.id + (w.enrolled ? ' · ✓ مسجل' : '') }); if (w.id === workerId) o.selected = true; profSel.appendChild(o); });
+    });
+    var go = h('button', { class: 'btn btn--primary', text: 'التقاط وتسجيل الوجه' });
+    var source = function () { return own ? vid : liveSrc(); };
+    if (own) openCam().then(function (s) { if (closed) return stopStream(s); stream = s; vid.srcObject = s; return vid.play(); }).catch(function (e) { prog.textContent = camErrMsg(e); });
+    go.addEventListener('click', function () {
+      if (!profSel.value) { prog.textContent = 'اختر الموظف أولًا.'; return; }
+      if (!consent.checked) { prog.textContent = 'يلزم تأكيد الموافقة أولًا.'; return; }
+      var src = source();
+      if (!src || !(src.videoWidth || src.naturalWidth || src.width)) { prog.textContent = 'الكاميرا مش شغالة لسه.'; return; }
+      go.disabled = true;
+      ensureFace().then(function () {
+        var samples = [], tries = 0, lastBox = null;
+        var hints = ['انظر للكاميرا مباشرة', 'أمِل رأسك قليلًا لليمين', 'أمِل رأسك قليلًا لليسار', 'ارفع ذقنك قليلًا', 'انظر للكاميرا مرة أخرى'];
+        function one() {
+          if (closed) throw new Error('أُغلق');
+          prog.textContent = 'التقاط ' + (samples.length + 1) + ' / 5 — ' + hints[samples.length];
+          return faceapi.detectSingleFace(source(), new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 })).withFaceLandmarks(true).withFaceDescriptor().then(function (r) {
+            tries++;
+            if (r && r.detection.box.width > 60) { samples.push(Array.from(r.descriptor)); var b = r.detection.box; lastBox = { x1: b.x, y1: b.y, x2: b.x + b.width, y2: b.y + b.height }; }
+            if (samples.length < 5 && tries < 25) return new Promise(function (res) { setTimeout(res, 650); }).then(one);
+          });
+        }
+        return one().then(function () {
+          if (samples.length < 3) throw new Error('لم يتم العثور على وجه واضح — قرّب من الكاميرا وحسّن الإضاءة');
+          var photo = null; try { photo = faceCrop(source(), lastBox, 256); } catch (e) { }
+          var wid = profSel.value;
+          return API.post('faces', { workerId: wid, descriptors: samples, mode: 'replace' }).then(function () { return API.post('workers', { id: wid, photo: photo || undefined }); }).then(function (w) {
+            loadFaces(); closeIt(); U.closeModal();
+            U.toast('تم تسجيل بصمة الوجه', w.name + ' — هيتعرف عليه النظام تلقائيًا ويسجل حضوره');
+            if (done) done(w);
+          });
+        });
+      }).catch(function (e) { prog.textContent = 'تعذر التسجيل: ' + e.message; go.disabled = false; });
+    });
+    function closeIt() { closed = true; stopStream(stream); }
+    U.openModal('تسجيل بصمة وجه موظف', h('div', { style: { display: 'grid', gap: '12px' } },
+      h('label', { class: 'field' }, h('span', { text: 'الموظف' }), profSel),
+      own ? vid : h('div', { class: 'muted', style: { fontSize: '12.5px' }, text: 'هيتم استخدام الكاميرا الشغالة حاليًا — خلي الموظف يقف قدامها لوحده.' }),
+      h('div', { class: 'muted', style: { fontSize: '12px' }, text: 'بيتاخد 5 لقطات للوجه وتتحول لبصمة رقمية (128 رقم) تتحفظ على سيرفر المنصة، وتستخدمها كل الكاميرات للتعرف وتسجيل الحضور. الصورة نفسها مش بتتخزن غير كصورة للملف.' }),
+      h('label', { class: 'switch' }, consent, 'الموظف موافق على تسجيل بصمة الوجه للحضور والسلامة'),
+      h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' } }, go,
+        h('button', { class: 'btn btn--ghost', text: 'مسح بصمة هذا الموظف', onclick: function () { if (!profSel.value) return; API.post('faces', { workerId: profSel.value, descriptors: [], mode: 'replace' }).then(function () { loadFaces(); prog.textContent = 'تم مسح بصمة الوجه.'; if (done) done(); }); } })),
+      prog));
+    U.$('#modalBody').__onClose = closeIt;
   }
 
   /* ------------------------------------------------------------------ */
@@ -286,7 +529,6 @@
   function saveLab() { try { localStorage.setItem('egic-lab', JSON.stringify({ mode: LAB.mode, mirror: LAB.mirror, sound: LAB.sound, required: LAB.required, idMode: LAB.idMode, profileId: LAB.profileId, stationSec: LAB.stationSec, ppeEngine: LAB.ppeEngine })); } catch (e) { } }
 
   U.register('live', function (v) {
-    if (!LAB.profileId) LAB.profileId = S.meta.presenterId;
     var st = { running: false, stream: null, src: null, srcKind: null, busy: false, last: null, pose: null, fps: 0, ms: 0, frames: 0, fpsT: performance.now(), tracker: null, lastFace: 0, faces: [], captures: [], behavior: { sosSince: 0, fallSince: 0, ergoSince: 0, absentSince: 0, present: false, cool: {} }, flip: 0, destroyed: false };
     U.onCleanup(function () { st.destroyed = true; st.running = false; stopStream(st.stream); if (st.url) URL.revokeObjectURL(st.url); });
     // PPE engine actually in use: 'titan' (live_server.py) or 'browser' (TF.js) — falls back to browser when TITAN is down
@@ -326,7 +568,7 @@
       h('div', { style: { width: '64px', height: '64px', margin: '0 auto', borderRadius: '18px', display: 'grid', placeItems: 'center', background: 'rgba(43,161,96,.16)', color: 'var(--green-hi)' } }, U.icon('live')),
       h('h3', { text: 'ابدأ الكشف المباشر' }),
       h('p', { text: 'قف أمام الكاميرا. سيحدد النظام الخوذة ونظارة الوقاية والسترة العاكسة، وإن نقص أي منها يلتقط صورة ويسجلها في ملف العامل.' }),
-      h('div', { class: 'row' }, h('button', { class: 'btn btn--accent', onclick: function () { startCamera(); } }, U.icon('play'), 'تشغيل الكاميرا'), h('button', { class: 'btn', onclick: function () { pairPhone(startPhone); } }, '📱 كاميرا الموبايل'), h('label', { class: 'btn' }, U.icon('upload'), 'صورة / فيديو', h('input', { type: 'file', accept: 'image/*,video/*', style: { display: 'none' }, onchange: function (e) { if (e.target.files[0]) startFile(e.target.files[0]); } })))));
+      h('div', { class: 'row' }, h('button', { class: 'btn btn--accent', onclick: function () { startCamera(); } }, U.icon('play'), 'تشغيل الكاميرا'), h('button', { class: 'btn', onclick: function () { pairPhone(startPhone); } }, '📱 كاميرا الموبايل'), h('button', { class: 'btn', onclick: function () { ipCamDialog(startIpCam); } }, '🌐 كاميرا IP'), h('label', { class: 'btn' }, U.icon('upload'), 'صورة / فيديو', h('input', { type: 'file', accept: 'image/*,video/*', style: { display: 'none' }, onchange: function (e) { if (e.target.files[0]) startFile(e.target.files[0]); } })))));
     var loading = h('div', { class: 'lab-loading hidden' }, h('div', { class: 'box' }, h('div', { class: 'spinner' }), h('div', { style: { marginTop: '14px', fontWeight: 600 }, id: 'ldT', text: 'تحميل النماذج…' }), h('div', { class: 'bar' }, h('i', { id: 'ldBar' })), h('div', { class: 'muted mono', style: { fontSize: '11px' }, id: 'ldS', text: '' })));
     var stage = h('div', { class: 'lab-stage' }, canvas, video, img, phoneImg, phoneVid, h('div', { class: 'lab-hud' }, hudL, hudR), h('div', { class: 'lab-brand' }, h('div', { class: 'powered' }, h('span', { class: 'dot' }), 'POWERED BY ', h('b', { text: 'DELMON' }), h('span', { class: 'amp', text: '&' }), h('b', { text: 'DEV SMART X' }))), empty, loading);
     var left = h('div', null, stage);
@@ -334,7 +576,7 @@
     listCams().then(function (ds) { ds.forEach(function (d, i) { camSel.appendChild(h('option', { value: d.deviceId, text: d.label || ('كاميرا ' + (i + 1)) })); }); });
     var stopBtn = h('button', { class: 'btn', onclick: stop }, U.icon('stop'), 'إيقاف');
     var controls = h('div', { class: 'lab-controls' },
-      h('button', { class: 'btn btn--accent', onclick: function () { startCamera(); } }, U.icon('play'), 'تشغيل الكاميرا'), h('button', { class: 'btn', onclick: function () { pairPhone(startPhone); } }, '📱 كاميرا الموبايل'), stopBtn, camSel,
+      h('button', { class: 'btn btn--accent', onclick: function () { startCamera(); } }, U.icon('play'), 'تشغيل الكاميرا'), h('button', { class: 'btn', onclick: function () { pairPhone(startPhone); } }, '📱 كاميرا الموبايل'), h('button', { class: 'btn', onclick: function () { ipCamDialog(startIpCam); } }, '🌐 كاميرا IP'), stopBtn, camSel,
       h('label', { class: 'btn' }, U.icon('upload'), 'صورة / فيديو', h('input', { type: 'file', accept: 'image/*,video/*', style: { display: 'none' }, onchange: function (e) { if (e.target.files[0]) startFile(e.target.files[0]); } })),
       h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: LAB.mirror, onchange: function (e) { LAB.mirror = e.target.checked; saveLab(); } }), 'عكس الصورة'),
       h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: LAB.sound, onchange: function (e) { LAB.sound = e.target.checked; saveLab(); } }), 'تنبيه صوتي'));
@@ -350,14 +592,15 @@
     function renderSide() {
       clear(side);
       // identity
-      var c1 = U.card('الهوية', { icon: 'workers', actions: [h('button', { class: 'btn btn--xs', onclick: enrollDialog }, U.icon('userplus'), 'تسجيل وجه')] });
+      var c1 = U.card('الهوية', { icon: 'workers', actions: [h('button', { class: 'btn btn--xs', onclick: function () { enrollDialog(LAB.profileId, renderSide, st.srcKind && st.srcKind !== 'image' ? function () { return st.src; } : null); } }, U.icon('userplus'), 'تسجيل وجه')] });
       idCard = h('div', { class: 'idcard' }, h('div', { class: 'ph', id: 'idPh', text: '?' }), h('div', null, h('b', { id: 'idName', text: '—' }), h('span', { id: 'idSub', text: 'بانتظار ظهور شخص' })));
       idSel = U.select([['auto', 'تعرّف تلقائي بالوجه'], ['fixed', 'ربط بملف محدد']], LAB.idMode, function (x) { LAB.idMode = x; saveLab(); profSel.style.display = x === 'fixed' || !hasFaces() ? '' : 'none'; });
       var profSel = h('select', { class: 'select' });
-      API.get('workers', { limit: 40 }).then(function (r) { r.items.forEach(function (w) { var o = h('option', { value: w.id, text: w.name + ' · ' + w.id }); if (w.id === LAB.profileId) o.selected = true; profSel.appendChild(o); }); });
-      profSel.addEventListener('change', function () { LAB.profileId = profSel.value; saveLab(); });
+      profSel.appendChild(h('option', { value: '', text: 'بدون ربط بموظف' }));
+      API.get('workers', { limit: 1000 }).then(function (r) { r.items.forEach(function (w) { var o = h('option', { value: w.id, text: w.name + ' · ' + w.id }); if (w.id === LAB.profileId) o.selected = true; profSel.appendChild(o); }); });
+      profSel.addEventListener('change', function () { LAB.profileId = profSel.value || null; saveLab(); });
       profSel.style.display = LAB.idMode === 'fixed' || !hasFaces() ? '' : 'none';
-      c1.body.appendChild(h('div', { style: { display: 'grid', gap: '10px' } }, idCard, idSel, profSel, h('div', { class: 'muted', style: { fontSize: '11.5px' }, id: 'idHint', text: hasFaces() ? 'بصمات الوجه المسجلة: ' + Object.keys(faceDB()).length + ' — تُحفظ على هذا الجهاز فقط.' : 'لا توجد بصمات وجه مسجلة بعد — سيُنسب الكشف للملف المحدد أعلاه.' })));
+      c1.body.appendChild(h('div', { style: { display: 'grid', gap: '10px' } }, idCard, idSel, profSel, h('div', { class: 'muted', style: { fontSize: '11.5px' }, id: 'idHint', text: hasFaces() ? 'موظفون ببصمة وجه: ' + Object.keys(FACES).length + ' — أي وجه يتعرف عليه بيتسجل حضوره تلقائيًا.' : 'لا توجد بصمات وجه مسجلة بعد — سجّل وجوه الموظفين من «تسجيل وجه» أو من ملف الموظف.' })));
       side.appendChild(c1);
       // PPE checklist
       if (hasPPE()) {
@@ -392,7 +635,7 @@
         c3.body.appendChild(behav);
         side.appendChild(c3);
       }
-      var c4 = U.card('آخر اللقطات المسجلة', { icon: 'reports', actions: [h('a', { class: 'btn btn--xs', href: '#/workers/' + (LAB.profileId || S.meta.presenterId), text: 'فتح الملف' })] });
+      var c4 = U.card('آخر اللقطات المسجلة', { icon: 'reports', actions: [LAB.profileId ? h('a', { class: 'btn btn--xs', href: '#/workers/' + LAB.profileId, text: 'فتح الملف' }) : h('a', { class: 'btn btn--xs', href: '#/attendance', text: 'الحضور' })] });
       caps = h('div', { class: 'captures' });
       renderCaptures();
       c4.body.appendChild(caps);
@@ -403,7 +646,6 @@
       side.appendChild(c5);
       renderModelChips();
     }
-    function hasFaces() { return Object.keys(faceDB()).some(function (k) { return faceDB()[k].length; }); }
     function renderCaptures() {
       if (!caps) return; clear(caps);
       if (!st.captures.length) { caps.appendChild(h('div', { class: 'muted', style: { gridColumn: '1 / -1', fontSize: '12px' }, text: 'لا توجد لقطات بعد.' })); return; }
@@ -486,6 +728,18 @@
         .then(function (el) { if (st.srcKind !== 'phone') return; st.src = st.phoneMode === 'mjpeg' ? phoneFrame(st, phoneImg) : el; st.running = true; st.tracker = null; loop(); })
         .catch(function (e) { st.srcKind = null; empty.classList.remove('hidden'); U.toast('تعذر استقبال صورة الموبايل', e.message, { kind: 'critical' }); });
     }
+    function startIpCam(src) {
+      stopSources();
+      empty.classList.add('hidden');
+      prepareModels();
+      st.srcKind = 'ipcam';
+      attachIpCam(src, phoneImg, st, function (err) { U.toast('مشكلة في كاميرا IP: ' + src.name, err || 'انقطع البث — السيرفر بيحاول يعيد الاتصال', { kind: 'critical', ms: 8000 }); })
+        .then(function () { if (st.srcKind !== 'ipcam') return; st.src = phoneFrame(st, phoneImg); st.running = true; st.tracker = null; loop(); })
+        .catch(function (e) { if (st.srcKind !== 'ipcam') return; stopSources(); empty.classList.remove('hidden'); U.toast('تعذر تشغيل كاميرا IP', e.message, { kind: 'critical', ms: 9000 }); });
+    }
+    function camId() { return st.srcKind === 'ipcam' && st.ipcam ? st.ipcam.id : 'P01-CAM-LIVE'; }
+    function camName() { return st.srcKind === 'ipcam' && st.ipcam ? st.ipcam.name : (S.cams['P01-CAM-LIVE'] || {}).name || 'كاميرا العرض'; }
+    var sighter = new Sighter(camId, function (r, f, img) { if (r && r.isNew) U.toast('تسجيل حضور: ' + r.record.workerName, 'أول ظهور اليوم · ' + U.fTime(r.ts) + (r.record.late ? ' · متأخر ' + r.record.lateMin + ' د' : ''), { kind: 'live', img: img, action: ['الحضور', function () { U.navigate('#/attendance'); }] }); });
     function startFile(file) {
       stopSources();
       empty.classList.add('hidden');
@@ -499,14 +753,14 @@
         img.src = st.url;
       }
     }
-    function stopSources() { if (st.srcKind === 'phone') detachPhone(st, phoneVid, phoneImg); st.running = false; stopStream(st.stream); st.stream = null; try { video.pause(); } catch (e) { } video.removeAttribute('src'); video.srcObject = null; if (st.url) { URL.revokeObjectURL(st.url); st.url = null; } st.srcKind = null; st.last = null; st.pose = null; }
+    function stopSources() { if (st.srcKind === 'phone' || st.srcKind === 'ipcam') detachPhone(st, phoneVid, phoneImg); st.ipcam = null; st.running = false; stopStream(st.stream); st.stream = null; try { video.pause(); } catch (e) { } video.removeAttribute('src'); video.srcObject = null; if (st.url) { URL.revokeObjectURL(st.url); st.url = null; } st.srcKind = null; st.last = null; st.pose = null; }
     function stop() { stopSources(); empty.classList.remove('hidden'); var g = canvas.getContext('2d'); g.fillStyle = '#020403'; g.fillRect(0, 0, canvas.width, canvas.height); }
 
     // ---------- main loop ----------
     function srcDims() { var s = st.src; return s ? { w: s.videoWidth || s.naturalWidth || s.width, h: s.videoHeight || s.naturalHeight || s.height } : { w: 0, h: 0 }; }
     function loop() {
       if (!st.running || st.destroyed) return;
-      if (st.srcKind === 'phone' && st.phoneMode === 'mjpeg') st.src = phoneFrame(st, phoneImg) || st.src;
+      if ((st.srcKind === 'phone' && st.phoneMode === 'mjpeg') || st.srcKind === 'ipcam') st.src = phoneFrame(st, phoneImg) || st.src;
       var d = srcDims();
       if (d.w && d.h) {
         if (canvas.width !== d.w || canvas.height !== d.h) { canvas.width = d.w; canvas.height = d.h; }
@@ -542,10 +796,11 @@
       if (doPose && AI.loaded('pose')) jobs.push(AI.run('pose', st.src, { conf: 0.45, iou: 0.5, maxDet: 6 }).then(function (poses) { st.pose = { poses: poses, t: now }; behaviour(poses, d, now); }));
       if (faceapi && faceapi.nets.faceRecognitionNet.isLoaded && now - st.lastFace > 450 && matcher()) {
         st.lastFace = now;
-        jobs.push(faceapi.detectAllFaces(st.src, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 })).withFaceLandmarks(true).withFaceDescriptors().then(function (res) {
-          var m = matcher();
-          st.faces = res.map(function (r) { var best = m.findBestMatch(r.descriptor); var b = r.detection.box; return { box: { x1: b.x, y1: b.y, x2: b.x + b.width, y2: b.y + b.height }, label: best.label, dist: best.distance }; });
+        var fsrc = st.src;
+        jobs.push(detectFaces(fsrc).then(function (faces) {
+          st.faces = faces;
           if (st.tracker) st.faces.forEach(function (f) { st.tracker.assignIdentity(f.box, f.label === 'unknown' ? '__unknown__' : f.label, 1 - f.dist); });
+          if (st.srcKind !== 'image' && st.srcKind !== 'video') sighter.feed(faces, fsrc); // recognised faces also count as attendance
         }).catch(function () { }));
       }
       return Promise.all(jobs).then(function () {
@@ -589,8 +844,7 @@
       var coolKey = wid || ('track-' + track.id), tnow = Date.now();
       items = items.filter(function (k) { var kk = coolKey + ':' + k; if (workerCool[kk] && tnow - workerCool[kk] < 30000) return false; workerCool[kk] = tnow; return true; });
       if (!items.length) return;
-      var cam = S.cams['P01-CAM-LIVE'];
-      var title = 'EGIC · ' + (cam ? cam.name : 'كاميرا العرض') + ' · ' + nowStr();
+      var title = 'EGIC · ' + camName() + ' · ' + nowStr();
       var imgUrl = snapshot(function (g) {
         var fs = Math.max(14, Math.round(d.w / 55));
         corners(g, track.box, COL.bad, Math.max(3, d.w / 320));
@@ -604,7 +858,7 @@
       stage.classList.remove('is-alert'); void stage.offsetWidth; stage.classList.add('is-alert');
       if (LAB.sound) beep();
       workerInfo(wid).then(function (w) {
-        var posts = items.map(function (k) { return API.post('events', { type: PPE_TYPES[k], workerId: wid, cameraId: 'P01-CAM-LIVE', conf: Math.round(conf * 100) / 100, source: 'live-ai', incident: incident, missing: items, durationSec: Math.round((Date.now() - (track.since[k] || Date.now())) / 1000) + 1, evidence: { kind: 'live', image: imgUrl, model: ppeEng === 'titan' ? 'TITAN-PPE ppe_hf.onnx' : 'YOLOv8s-SH17' } }); });
+        var posts = items.map(function (k) { return API.post('events', { type: PPE_TYPES[k], workerId: wid, cameraId: camId(), conf: Math.round(conf * 100) / 100, source: 'live-ai', incident: incident, missing: items, durationSec: Math.round((Date.now() - (track.since[k] || Date.now())) / 1000) + 1, evidence: { kind: 'live', image: imgUrl, model: ppeEng === 'titan' ? 'TITAN-PPE ppe_hf.onnx' : 'YOLOv8s-SH17' } }); });
         return Promise.all(posts).then(function (evs) {
           U.toast('تم تسجيل مخالفة ← ملف ' + (w ? w.name : 'غير محدد'), items.map(function (k) { return 'بدون ' + PPE_AR[k]; }).join(' · ') + ' · ' + (evs[0] ? evs[0].id : ''), { kind: 'live', img: imgUrl, action: wid ? ['فتح الملف', function () { U.navigate('#/workers/' + wid); }] : null, ms: 7000 });
         });
@@ -647,7 +901,7 @@
       st.captures.unshift({ img: imgUrl, title: 'إنذار ' + R.ar + ' · ' + U.fTime(Date.now()) }); renderCaptures();
       stage.classList.remove('is-alert'); void stage.offsetWidth; stage.classList.add('is-alert');
       var wid = k === 'smoking' ? (LAB.idMode === 'fixed' || !hasFaces() ? LAB.profileId : (st.tracker && st.tracker.tracks[0] && st.tracker.tracks[0].identity) || LAB.profileId) : null;
-      var body = { type: R.type, workerId: wid, cameraId: 'P01-CAM-LIVE', conf: best ? Math.round(best.score * 100) / 100 : 0.9, source: 'live-' + (k === 'smoking' ? 'smoking' : 'fire'), sev: R.sev, evidence: { kind: 'live', image: imgUrl, model: (ppeEng === 'titan' ? 'EGIC AI · ' : '') + (k === 'smoking' && ppeEng === 'titan' ? 'Ensemble YOLOv8 + YOLO11m' : R.model) }, note: k === 'smoking' ? 'رُصد تدخين (' + dets.map(function (x) { return SMOKING_LABELS[x.label]; }).filter(Boolean).join('، ') + ') في منطقة يُمنع فيها التدخين' : 'رصد ' + R.ar + ' مؤكد عبر ' + R.need + ' إطارات متتالية' };
+      var body = { type: R.type, workerId: wid, cameraId: camId(), conf: best ? Math.round(best.score * 100) / 100 : 0.9, source: 'live-' + (k === 'smoking' ? 'smoking' : 'fire'), sev: R.sev, evidence: { kind: 'live', image: imgUrl, model: (ppeEng === 'titan' ? 'EGIC AI · ' : '') + (k === 'smoking' && ppeEng === 'titan' ? 'Ensemble YOLOv8 + YOLO11m' : R.model) }, note: k === 'smoking' ? 'رُصد تدخين (' + dets.map(function (x) { return SMOKING_LABELS[x.label]; }).filter(Boolean).join('، ') + ') في منطقة يُمنع فيها التدخين' : 'رصد ' + R.ar + ' مؤكد عبر ' + R.need + ' إطارات متتالية' };
       var fallback = { type: R.type, ts: Date.now(), conf: body.conf, sev: R.sev, cameraId: body.cameraId, evidence: { model: body.evidence.model }, incident: 'HZ-' + Date.now().toString(36) };
       API.post('events', body).then(function (ev) {
         if (window.EGICAlarm) window.EGICAlarm.show(ev, { img: imgUrl });
@@ -674,7 +928,7 @@
           st.captures.unshift({ img: imgUrl, title: text + ' · ' + U.fTime(now) }); renderCaptures();
           stage.classList.remove('is-alert'); void stage.offsetWidth; stage.classList.add('is-alert');
           if (LAB.sound) beep(type === 'SOS_GESTURE' ? 'sos' : null);
-          API.post('events', { type: type, workerId: type === 'UNATTENDED_STATION' ? null : wid, cameraId: 'P01-CAM-LIVE', conf: 0.9, source: 'live-pose', sev: sev, evidence: { kind: 'live', image: imgUrl, model: 'YOLO26n-pose' }, note: type === 'UNATTENDED_STATION' ? 'لا يوجد مشغّل في منطقة المحطة لأكثر من ' + LAB.stationSec + ' ث' : '' }).then(function (ev) {
+          API.post('events', { type: type, workerId: type === 'UNATTENDED_STATION' ? null : wid, cameraId: camId(), conf: 0.9, source: 'live-pose', sev: sev, evidence: { kind: 'live', image: imgUrl, model: 'YOLO26n-pose' }, note: type === 'UNATTENDED_STATION' ? 'لا يوجد مشغّل في منطقة المحطة لأكثر من ' + LAB.stationSec + ' ث' : '' }).then(function (ev) {
             if (type !== 'SOS_GESTURE') U.toast('Pose AI: ' + text, ev.id + ' · ' + ev.siteName, { kind: type === 'FALL' ? 'critical' : 'live', img: imgUrl, action: ['عرض', function () { U.openEvent(ev); }] });
           });
         }
@@ -748,8 +1002,8 @@
       if (st.faces && st.faces.length && LAB.idMode === 'auto') st.faces.forEach(function (f) { var b = mir ? mirrorBox(f.box, d.w) : f.box; g.strokeStyle = 'rgba(247,146,36,.85)'; g.lineWidth = 1.5; g.strokeRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1); });
       // HUD chips
       clear(hudL); clear(hudR);
-      hudL.appendChild(h('span', { class: 'hud-chip rec', text: st.srcKind === 'camera' ? 'LIVE · P01-CAM-LIVE' : st.srcKind === 'phone' ? 'LIVE · 📱 MOBILE CAM · ' + (st.phoneMode === 'rtc' ? 'WebRTC' : 'RELAY') + (st.phoneFps ? ' · ' + st.phoneFps + ' FPS' : '') : st.srcKind === 'video' ? 'VIDEO FILE' : 'IMAGE' }));
-      hudL.appendChild(h('span', { class: 'hud-chip', text: 'نقطة فحص الوقاية · المصنع 01' }));
+      hudL.appendChild(h('span', { class: 'hud-chip rec', text: st.srcKind === 'camera' ? 'LIVE · P01-CAM-LIVE' : st.srcKind === 'ipcam' ? 'LIVE · 🌐 ' + camName() + (st.phoneFps ? ' · ' + st.phoneFps + ' FPS' : '') : st.srcKind === 'phone' ? 'LIVE · 📱 MOBILE CAM · ' + (st.phoneMode === 'rtc' ? 'WebRTC' : 'RELAY') + (st.phoneFps ? ' · ' + st.phoneFps + ' FPS' : '') : st.srcKind === 'video' ? 'VIDEO FILE' : 'IMAGE' }));
+      hudL.appendChild(h('span', { class: 'hud-chip', text: st.srcKind === 'ipcam' ? U.siteName((S.cams[camId()] || {}).siteId || 'PLT-01') + ' · ' + camId() : 'نقطة فحص الوقاية · المصنع 01' }));
       hudR.appendChild(h('span', { class: 'hud-chip', text: (st.fps ? st.fps + ' FPS · ' : '') + st.ms + ' ms' }));
       hudR.appendChild(h('span', { class: 'hud-chip', text: (ppeEng === 'titan' ? 'EGIC AI SERVER' : faceapi ? faceapi.tf.getBackend().toUpperCase() : '') + ' · ON-DEVICE' }));
     }
@@ -801,51 +1055,9 @@
       }
     }
 
-    // ---------- face enrolment ----------
-    function enrollDialog() {
-      var target = LAB.profileId || S.meta.presenterId;
-      var consent = h('input', { type: 'checkbox' });
-      var info = h('div', { class: 'muted', style: { fontSize: '12.5px' }, text: 'يلتقط النظام 3 صور للوجه ويحوّلها إلى بصمة رقمية (128 رقمًا) تُحفظ على هذا الجهاز فقط ولا تُرسل لأي خادم.' });
-      var prog = h('div', { class: 'mono', style: { fontSize: '12px' }, text: '' });
-      var profSel = h('select', { class: 'select' });
-      API.get('workers', { limit: 40 }).then(function (r) { r.items.forEach(function (w) { var o = h('option', { value: w.id, text: w.name + ' · ' + w.id }); if (w.id === target) o.selected = true; profSel.appendChild(o); }); });
-      var go = h('button', { class: 'btn btn--primary', text: 'التقاط وتسجيل' });
-      go.addEventListener('click', function () {
-        if (!consent.checked) { prog.textContent = 'يلزم تأكيد الموافقة أولًا.'; return; }
-        if (st.srcKind !== 'camera') { prog.textContent = 'شغّل الكاميرا أولًا ثم أعد المحاولة.'; return; }
-        go.disabled = true;
-        ensureFace().then(function () {
-          var samples = [], n = 0;
-          function one() {
-            prog.textContent = 'التقاط ' + (n + 1) + ' / 3 — انظر للكاميرا' + (n === 1 ? ' وأمِل رأسك قليلًا' : '');
-            return faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 })).withFaceLandmarks(true).withFaceDescriptor().then(function (r) {
-              if (r) { samples.push(Array.from(r.descriptor)); n++; }
-              if (n < 3) return new Promise(function (res) { setTimeout(res, 700); }).then(one);
-            });
-          }
-          var tries = 0;
-          function guarded() { tries++; return one().then(function () { if (n < 3 && tries < 10) return guarded(); }); }
-          return guarded().then(function () {
-            if (samples.length < 2) throw new Error('لم يتم العثور على وجه واضح');
-            var db = faceDB(); db[profSel.value] = (db[profSel.value] || []).concat(samples).slice(-8); saveFaceDB(db); matcherKey = '';
-            // profile photo = face crop
-            var fb = null;
-            return faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 416 })).then(function (det) {
-              if (det) { var b = det.box, c = document.createElement('canvas'), pad = b.width * 0.35; c.width = c.height = 256; c.getContext('2d').drawImage(video, Math.max(0, b.x - pad), Math.max(0, b.y - pad * 1.2), b.width + pad * 2, b.height + pad * 2.2, 0, 0, 256, 256); fb = c.toDataURL('image/jpeg', 0.85); }
-              return API.post('workers', { id: profSel.value, enrolled: true, photo: fb || undefined });
-            }).then(function (w) {
-              delete workerCache[profSel.value];
-              LAB.profileId = profSel.value; LAB.idMode = 'auto'; saveLab();
-              U.closeModal(); U.toast('تم تسجيل بصمة الوجه', w.name + ' — سيتعرف النظام عليه تلقائيًا الآن'); renderSide();
-            });
-          });
-        }).catch(function (e) { prog.textContent = 'تعذر التسجيل: ' + e.message; go.disabled = false; });
-      });
-      U.openModal('تسجيل بصمة وجه لعامل', h('div', { style: { display: 'grid', gap: '12px' } }, h('label', { class: 'field' }, h('span', { text: 'ملف العامل' }), profSel), info, h('label', { class: 'switch' }, consent, 'أوافق على تسجيل بصمة الوجه لأغراض السلامة (موافقة صريحة)'), h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } }, go, h('button', { class: 'btn btn--ghost', text: 'حذف كل البصمات', onclick: function () { saveFaceDB({}); matcherKey = ''; prog.textContent = 'تم حذف كل البصمات من هذا الجهاز.'; renderSide(); } })), prog));
-    }
-
     // preload models in the background so the first start is instant
     setTimeout(function () { if (!st.destroyed) prepareModels(); }, 300);
+    loadFaces().then(function () { if (!st.destroyed) renderSide(); }); migrateLocalFaces();
   });
 
   /* ------------------------------------------------------------------ */
@@ -879,6 +1091,7 @@
     left.appendChild(h('div', { class: 'lab-controls' },
       h('button', { class: 'btn btn--accent', onclick: startCamera }, U.icon('play'), 'تشغيل الكاميرا'),
       h('button', { class: 'btn', onclick: function () { pairPhone(startPhone); } }, '📱 كاميرا الموبايل'),
+      h('button', { class: 'btn', onclick: function () { ipCamDialog(startIpCam); } }, '🌐 كاميرا IP'),
       h('button', { class: 'btn', onclick: stop }, U.icon('stop'), 'إيقاف'),
       h('label', { class: 'btn' }, U.icon('upload'), 'صورة / فيديو', h('input', { type: 'file', accept: 'image/*,video/*', style: { display: 'none' }, onchange: function (e) { var f = e.target.files[0]; if (f) startUrl(URL.createObjectURL(f), /^video/.test(f.type) ? 'video' : 'image', true); } })),
       h('span', { class: 'muted', style: { fontSize: '12px' }, text: 'الاتجاه:' }), U.seg([['AUTO', 'تلقائي'], ['IN', 'دخول'], ['OUT', 'خروج']], ANPR.lane, function (x) { ANPR.lane = x; saveAnpr(); }),
@@ -935,17 +1148,25 @@
         .then(function (el) { if (st.srcKind !== 'phone') return; st.src = st.phoneMode === 'mjpeg' ? phoneFrame(st, phoneImg) : el; st.running = true; loop(); })
         .catch(function (e) { st.srcKind = null; empty.classList.remove('hidden'); U.toast('تعذر استقبال صورة الموبايل', e.message, { kind: 'critical' }); });
     }
+    function startIpCam(src) {
+      stopSources(); empty.classList.add('hidden'); prepare();
+      st.gen = (st.gen || 0) + 1; st.voter = null; st.lastRead = null; st.srcKind = 'ipcam';
+      clear(readBox).appendChild(h('div', { class: 'muted', text: 'جارٍ استقبال صورة الكاميرا ' + src.name + '…' }));
+      attachIpCam(src, phoneImg, st, function (err) { U.toast('مشكلة في كاميرا IP: ' + src.name, err || 'انقطع البث', { kind: 'critical', ms: 8000 }); })
+        .then(function () { if (st.srcKind !== 'ipcam') return; st.src = phoneFrame(st, phoneImg); st.running = true; loop(); })
+        .catch(function (e) { if (st.srcKind !== 'ipcam') return; stopSources(); empty.classList.remove('hidden'); U.toast('تعذر تشغيل كاميرا IP', e.message, { kind: 'critical', ms: 9000 }); });
+    }
     function startCamera() {
       stopSources(); empty.classList.add('hidden'); prepare();
       st.gen = (st.gen || 0) + 1;
       openCam().then(function (s) { if (st.destroyed) { stopStream(s); return; } st.stream = s; video.srcObject = s; return video.play().then(function () { st.src = video; st.srcKind = 'camera'; st.running = true; loop(); }); }).catch(function (e) { empty.classList.remove('hidden'); U.toast('تعذر فتح الكاميرا', camErrMsg(e), { kind: 'critical', ms: 9000 }); });
     }
-    function stopSources() { if (st.srcKind === 'phone') detachPhone(st, phoneVid, phoneImg); st.running = false; stopStream(st.stream); st.stream = null; try { video.pause(); } catch (e) { } video.removeAttribute('src'); video.srcObject = null; if (st.url) { URL.revokeObjectURL(st.url); st.url = null; } st.srcKind = null; st.lastPlateBox = null; }
+    function stopSources() { if (st.srcKind === 'phone' || st.srcKind === 'ipcam') detachPhone(st, phoneVid, phoneImg); st.ipcam = null; st.running = false; stopStream(st.stream); st.stream = null; try { video.pause(); } catch (e) { } video.removeAttribute('src'); video.srcObject = null; if (st.url) { URL.revokeObjectURL(st.url); st.url = null; } st.srcKind = null; st.lastPlateBox = null; }
     function stop() { stopSources(); empty.classList.remove('hidden'); }
 
     function loop() {
       if (!st.running || st.destroyed) return;
-      if (st.srcKind === 'phone' && st.phoneMode === 'mjpeg') st.src = phoneFrame(st, phoneImg) || st.src;
+      if ((st.srcKind === 'phone' && st.phoneMode === 'mjpeg') || st.srcKind === 'ipcam') st.src = phoneFrame(st, phoneImg) || st.src;
       var s = st.src, W = s.videoWidth || s.naturalWidth || s.width, H = s.videoHeight || s.naturalHeight || s.height;
       if (W && H) {
         if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
@@ -1052,10 +1273,13 @@
         label(g4, p.x1, p.y1 - 4, t, 'rgba(150,70,0,.95)', Math.max(16, Math.round(W / 40)));
       }
       clear(hudL); clear(hudR);
-      hudL.appendChild(h('span', { class: 'hud-chip rec', text: st.srcKind === 'camera' ? 'LIVE · P01-ANPR-LIVE' : st.srcKind === 'phone' ? 'LIVE · 📱 MOBILE CAM · ' + (st.phoneMode === 'rtc' ? 'WebRTC' : 'RELAY') + (st.phoneFps ? ' · ' + st.phoneFps + ' FPS' : '') : st.srcKind === 'video' ? 'VIDEO · GATE' : 'IMAGE' }));
+      hudL.appendChild(h('span', { class: 'hud-chip rec', text: st.srcKind === 'camera' ? 'LIVE · P01-ANPR-LIVE' : st.srcKind === 'ipcam' ? 'LIVE · 🌐 ' + st.ipcam.name : st.srcKind === 'phone' ? 'LIVE · 📱 MOBILE CAM · ' + (st.phoneMode === 'rtc' ? 'WebRTC' : 'RELAY') + (st.phoneFps ? ' · ' + st.phoneFps + ' FPS' : '') : st.srcKind === 'video' ? 'VIDEO · GATE' : 'IMAGE' }));
       hudL.appendChild(h('span', { class: 'hud-chip', text: 'البوابة الرئيسية · المصنع 01' }));
       hudR.appendChild(h('span', { class: 'hud-chip', text: st.ms + ' ms / قراءة' }));
     }
     setTimeout(function () { if (!st.destroyed) prepare(); }, 300);
   });
+
+  // shared with the attendance screen and the employee profile
+  window.EGICLive = { ensureFace: ensureFace, loadFaces: loadFaces, hasFaces: hasFaces, detectFaces: detectFaces, Sighter: Sighter, enrollDialog: enrollDialog, ipCamDialog: ipCamDialog, pairPhone: pairPhone, attachPhone: attachPhone, attachIpCam: attachIpCam, detachPhone: detachPhone, phoneFrame: phoneFrame, openCam: openCam, stopStream: stopStream, camErrMsg: camErrMsg, listCams: listCams, fileProtocolNotice: fileProtocolNotice, adminPost: adminPost };
 })();

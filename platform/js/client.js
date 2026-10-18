@@ -58,7 +58,20 @@
       });
     });
   }
-  function journalClear() { return db().then(function (d) { if (!d) return; try { d.transaction(STORE, 'readwrite').objectStore(STORE).clear(); } catch (e) { } }); }
+  // employees, face templates and attendance are kept unless `people` is set
+  var PEOPLE = { worker: 1, worker_del: 1, face: 1, att: 1, attset: 1 };
+  function journalClear(people) {
+    return journalAll().then(function (rows) {
+      return db().then(function (d) {
+        if (!d) return;
+        try {
+          var st = d.transaction(STORE, 'readwrite').objectStore(STORE);
+          st.clear();
+          if (!people) rows.forEach(function (r) { if (PEOPLE[r.kind]) { delete r.k; st.add(r); } });
+        } catch (e) { }
+      });
+    });
+  }
 
   /* ---------------- init ---------------- */
   function tryServer() {
@@ -75,7 +88,7 @@
     if (state.es) try { state.es.close(); } catch (e) { }
     var es = new EventSource(state.base + '/api/v1/stream');
     state.es = es;
-    ['hello', 'event', 'event_update', 'gate', 'health', 'kpi', 'trace', 'worker', 'vehicle', 'audit', 'camera', 'phonecam', 'reset'].forEach(function (t) {
+    ['hello', 'event', 'event_update', 'gate', 'health', 'kpi', 'trace', 'worker', 'vehicle', 'audit', 'camera', 'phonecam', 'reset', 'faces', 'attendance', 'ipcam'].forEach(function (t) {
       es.addEventListener(t, function (ev) { var d; try { d = JSON.parse(ev.data); } catch (e) { return; } dispatch({ type: t, data: d, ts: Date.now() }); });
     });
     es.onopen = function () { state.connected = true; dispatch({ type: 'connection', data: { connected: true, mode: 'server' } }); };
@@ -95,15 +108,9 @@
       state.engine = new E.Engine({ mode: 'embedded' });
       return journalAll().then(function (rows) {
         var eng = state.engine, quiet = eng.listeners; eng.listeners = [];
-        rows.forEach(function (j) {
-          try {
-            var p = j.payload;
-            if (j.kind === 'event') eng.addEvent(Object.assign({}, p, { ts: p.ts || j.ts }));
-            else if (j.kind === 'worker') eng.upsertWorker(p);
-            else if (j.kind === 'gate') eng.addGateRead(Object.assign({}, p, { ts: p.ts || j.ts }));
-            else if (j.kind === 'vehicle') eng.upsertVehicle(p);
-            else if (j.kind === 'action') eng.eventAction(p.id, p.action, p.body || {});
-          } catch (e) { }
+        // employees first, so replayed events and attendance find their worker
+        rows.filter(function (j) { return PEOPLE[j.kind]; }).concat(rows.filter(function (j) { return !PEOPLE[j.kind]; })).forEach(function (j) {
+          try { eng.replay(j.kind, j.payload, j.ts); } catch (e) { }
         });
         eng.listeners = quiet;
         eng.on(dispatch);
@@ -143,11 +150,8 @@
     logCall('POST', url, res.status, Math.max(1, Math.round(now() - t0)), 0);
     if (res.status !== 200) return Promise.reject(new Error(res.status + ' ' + url));
     // persist live records so a page reload keeps them (the "backend" for static hosting)
-    if (url === '/api/v1/events') journalAdd('event', Object.assign({}, body, { ts: res.body.ts }));
-    else if (/^\/api\/v1\/events\/[^/]+\/action$/.test(url)) journalAdd('action', { id: url.split('/')[4], action: body.action, body: body });
-    else if (url === '/api/v1/workers') journalAdd('worker', Object.assign({}, body, { id: res.body.id }));
-    else if (url === '/api/v1/gate/log') journalAdd('gate', Object.assign({}, body, { ts: res.body.ts, lane: res.body.lane }));
-    else if (url === '/api/v1/vehicles') journalAdd('vehicle', body);
+    var j = state.engine.journalEntry(url, body || {}, res.body);
+    if (j) journalAdd(j[0], j[1]);
     return Promise.resolve(res.body);
   }
   function on(type, fn) {
@@ -162,7 +166,7 @@
 
   root.EGICClient = {
     init: init, get: get, post: post, on: on, state: state, apiLog: apiLog, evidenceUrl: evidenceUrl,
-    resetLocal: function () { return journalClear(); },
+    resetLocal: function (people) { return journalClear(people); },
     onApi: function (fn) { return on('__api', fn); }
   };
 })(typeof self !== 'undefined' ? self : this);

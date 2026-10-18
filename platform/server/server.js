@@ -6,8 +6,8 @@
  * Zero-dependency Node.js server:
  *   • serves the web application (index.html, console, assets, models)
  *   • REST API  →  /api/v1/*        (same contract as the embedded engine)
- *   • Live SSE  →  /api/v1/stream   (events · gate reads · health · KPIs)
- *   • persists live AI evidence (PPE screenshots, plate snapshots) under ./data
+ *   • Live SSE  →  /api/v1/stream   (events · gate reads · attendance · health · KPIs)
+ *   • persists live AI evidence (PPE screenshots, plate snapshots, attendance photos) under ./data
  *
  * Run:   node server/server.js            → http://localhost:8080
  *        PORT=9000 node server/server.js
@@ -21,9 +21,17 @@
  *   Phones only open the camera over HTTPS: locally put a cert in .certs/ (key.pem + cert.pem, see
  *   scripts/make-local-cert.sh) and the server also listens on HTTPS_PORT (default 8443).
  *
+ * IP cameras: /api/v1/ipcams — the server reads the camera (RTSP through ffmpeg, MJPEG or JPEG snapshot URLs,
+ *   Basic/Digest auth) and re-serves it as same-origin MJPEG (/api/v1/ipcams/:id/mjpeg) so the browser models can
+ *   read the pixels. Cameras are saved in DATA_DIR/ipcams.json (contains credentials — keep it private).
+ *   RTSP needs ffmpeg (on PATH, or FFMPEG_PATH, or platform/bin/ffmpeg[.exe]). The camera only streams while
+ *   someone is watching it.
+ *   Cameras on a factory network the cloud server can't reach go through an Edge Agent (agent/edge-agent.js) running
+ *   on a PC inside that network: it polls /api/v1/agent/poll and pushes frames to /api/v1/agent/frame/:id.
+ *
  * Cloud (Railway): PORT is injected → binds 0.0.0.0. CORS_ORIGIN restricts which web origins may call the API
  * (default '*', so the UI can be hosted on Vercel while this server runs on Railway). DATA_DIR moves evidence +
- * journal to a mounted volume so they survive redeploys.
+ * journals to a mounted volume so they survive redeploys. ADMIN_TOKEN protects data wipes and camera changes.
  */
 'use strict';
 
@@ -33,20 +41,24 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const url = require('url');
+const crypto = require('crypto');
 const { Engine } = require('../js/engine.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const DATA = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, 'data');
 const EVID = path.join(DATA, 'evidence');
-const JOURNAL = path.join(DATA, 'journal.ndjson');
+const JOURNAL = path.join(DATA, 'journal.ndjson');    // live AI events, gate reads, vehicles — «test data»
+const REGISTRY = path.join(DATA, 'registry.ndjson');  // employees, face templates, attendance — kept on «clear test data»
+const IPCAMS_FILE = path.join(DATA, 'ipcams.json');  // camera URLs incl. credentials — never served
 const PORT = +process.env.PORT || 8080;
 const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
 const CORS = {
   'Access-Control-Allow-Origin': process.env.CORS_ORIGIN || '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Token, X-Agent-Key, X-Agent-Version, X-Agent-Host',
   'Access-Control-Max-Age': '86400'
 };
+const REGISTRY_KINDS = new Set(['worker', 'worker_del', 'face', 'att', 'attset']);
 
 fs.mkdirSync(EVID, { recursive: true });
 
@@ -54,7 +66,7 @@ const C = { dim: '\x1b[2m', g: '\x1b[32m', y: '\x1b[33m', r: '\x1b[31m', c: '\x1
 const log = (...a) => console.log(C.dim + new Date().toLocaleTimeString('en-GB') + C.x, ...a);
 
 /* ------------------------------------------------------------------ */
-/* Engine + journal (live records survive restarts)                    */
+/* Engine + journals (live records survive restarts)                   */
 /* ------------------------------------------------------------------ */
 let engine = new Engine({ mode: 'server' }); // replaced on POST /api/v1/admin/reset
 
@@ -68,25 +80,18 @@ function saveDataUrl(dataUrl, name) {
 }
 
 function journal(kind, payload) {
-  try { fs.appendFileSync(JOURNAL, JSON.stringify({ kind, ts: Date.now(), payload }) + '\n'); } catch (e) { /* non-fatal */ }
+  try { fs.appendFileSync(REGISTRY_KINDS.has(kind) ? REGISTRY : JOURNAL, JSON.stringify({ kind, ts: Date.now(), payload }) + '\n'); } catch (e) { /* non-fatal */ }
 }
 
+function readJournal(file) { return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean) : []; }
 function replayJournal() {
-  if (!fs.existsSync(JOURNAL)) return 0;
-  const lines = fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean);
-  let n = 0;
   const quiet = engine.listeners; engine.listeners = [];
-  for (const line of lines) {
-    try {
-      const j = JSON.parse(line);
-      const p = j.payload;
-      if (j.kind === 'event') engine.addEvent(Object.assign({}, p, { ts: p.ts || j.ts }));
-      else if (j.kind === 'worker') engine.upsertWorker(p);
-      else if (j.kind === 'gate') engine.addGateRead(Object.assign({}, p, { ts: p.ts || j.ts }));
-      else if (j.kind === 'vehicle') engine.upsertVehicle(p);
-      else if (j.kind === 'action') engine.eventAction(p.id, p.action, p.body || {});
-      n++;
-    } catch (e) { /* skip corrupt line */ }
+  let n = 0;
+  // employees first (events and attendance reference them); 'worker' lines in the old single journal belonged to the removed demo workforce
+  for (const [file, skip] of [[REGISTRY, null], [JOURNAL, 'worker']]) {
+    for (const line of readJournal(file)) {
+      try { const j = JSON.parse(line); if (j.kind !== skip) { engine.replay(j.kind, j.payload, j.ts); n++; } } catch (e) { /* skip corrupt line */ }
+    }
   }
   engine.listeners = quiet;
   return n;
@@ -101,25 +106,39 @@ function broadcast(msg) {
   for (const res of clients) { try { res.write(data); } catch (e) { clients.delete(res); } }
   if (msg.type === 'event' && String(msg.data.source || '').indexOf('live') === 0) log(C.o + '● LIVE AI' + C.x, msg.data.typeAr, '→', msg.data.workerName || 'غير معروف', C.dim + msg.data.id + C.x);
   if (msg.type === 'gate' && String(msg.data.source || '').indexOf('live') === 0) log(C.c + '● LIVE ANPR' + C.x, msg.data.plate, msg.data.lane, msg.data.decision);
+  if (msg.type === 'attendance' && msg.data.kind === 'IN') log(C.g + '● ATTENDANCE' + C.x, 'check-in', msg.data.record.workerName, C.dim + msg.data.record.workerId + C.x);
 }
-engine.on(broadcast);
+
+function bootEngine() {
+  engine.on(broadcast);
+  const n = replayJournal();
+  registerIpcams();
+  engine.start();
+  return n;
+}
 
 // Wipe recorded test data (evidence snapshots + live journal) and restart the engine on a clean state.
-// Set ADMIN_TOKEN to require the header X-Admin-Token on public deployments.
-function resetData() {
+// people=true also wipes employees, face templates and attendance. Set ADMIN_TOKEN to require X-Admin-Token.
+function resetData(people) {
   let files = 0;
-  for (const f of fs.readdirSync(EVID)) { if (f !== 'README.txt') { try { fs.unlinkSync(path.join(EVID, f)); files++; } catch (e) { } } }
+  for (const f of fs.readdirSync(EVID)) {
+    if (f === 'README.txt' || (!people && /^(worker|att)_/.test(f))) continue;
+    try { fs.unlinkSync(path.join(EVID, f)); files++; } catch (e) { }
+  }
   let records = 0;
-  if (fs.existsSync(JOURNAL)) { records = fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean).length; fs.unlinkSync(JOURNAL); }
+  for (const file of people ? [JOURNAL, REGISTRY] : [JOURNAL]) {
+    if (fs.existsSync(file)) { records += readJournal(file).length; fs.unlinkSync(file); }
+  }
   engine.stop();
   engine = new Engine({ mode: 'server' });
-  engine.on(broadcast);
-  engine.start();
-  log(C.y + '● RESET' + C.x, 'test data wiped', C.dim + files + ' evidence files · ' + records + ' journal records' + C.x);
-  broadcast({ type: 'reset', data: { ts: Date.now(), files, records } });
+  bootEngine();
+  log(C.y + '● RESET' + C.x, people ? 'test data + employees wiped' : 'test data wiped', C.dim + files + ' evidence files · ' + records + ' journal records' + C.x);
+  broadcast({ type: 'reset', data: { ts: Date.now(), files, records, people: !!people } });
   return { ok: true, files, records };
 }
 setInterval(() => { for (const res of clients) { try { res.write(': ping\n\n'); } catch (e) { clients.delete(res); } } }, 15000);
+
+function adminOk(req) { return !process.env.ADMIN_TOKEN || req.headers['x-admin-token'] === process.env.ADMIN_TOKEN; }
 
 /* ------------------------------------------------------------------ */
 /* Phone camera relay (JPEG in → MJPEG out)                              */
@@ -145,6 +164,9 @@ function pushFrame(c, buf) {
     if (res.writableLength > 2 * 1024 * 1024) continue; // slow viewer: drop this frame
     try { res.write(head); res.write(buf); res.write('\r\n'); } catch (e) { c.viewers.delete(res); }
   }
+}
+function mjpegHead(res) {
+  res.writeHead(200, Object.assign({ 'Content-Type': 'multipart/x-mixed-replace; boundary=frame', 'Cache-Control': 'no-cache, no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' }, CORS));
 }
 async function camApi(req, res, id, action) {
   if (!CAM_ID.test(id)) return send(res, 400, { error: 'bad_session' });
@@ -176,7 +198,7 @@ async function camApi(req, res, id, action) {
   }
   if (action === 'mjpeg') {
     const c = camSession(id);
-    res.writeHead(200, Object.assign({ 'Content-Type': 'multipart/x-mixed-replace; boundary=frame', 'Cache-Control': 'no-cache, no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' }, CORS));
+    mjpegHead(res);
     c.viewers.add(res);
     if (c.frame) pushFrame({ viewers: new Set([res]) }, c.frame);
     req.on('close', () => c.viewers.delete(res));
@@ -191,6 +213,221 @@ async function camApi(req, res, id, action) {
   return send(res, 200, { session: id, connected: !!(c && c.frame && Date.now() - c.ts < 5000), lastFrameAgoMs: c && c.ts ? Date.now() - c.ts : null, fps: c ? c.fps : 0, viewers: c ? c.viewers.size : 0, offer: !!(c && c.offer), answered: !!(c && c.answer) });
 }
 setInterval(() => { const now = Date.now(); for (const [id, c] of cams) if (now - Math.max(c.ts, c.born) > 15 * 60 * 1000) { for (const r of c.viewers) try { r.end(); } catch (e) { } cams.delete(id); } }, 60 * 1000);
+
+/* ------------------------------------------------------------------ */
+/* IP cameras → MJPEG. Read directly by this server, or pushed by an     */
+/* Edge Agent inside the factory network (agent/edge-agent.js)          */
+/* ------------------------------------------------------------------ */
+const CAM = require('../agent/edge-agent.js');
+const { errAr, maskUrl, protoOf } = CAM;
+const IPCAM_FPS = Math.max(1, +process.env.IPCAM_FPS || 12);      // frames/s sent to the browser
+const IPCAM_WIDTH = Math.max(320, +process.env.IPCAM_WIDTH || 1280); // RTSP frames are scaled down to this width
+const AGENT_FPS = Math.max(1, +process.env.AGENT_FPS || 8);        // agents upload over the factory's internet line
+const AGENT_WIDTH = Math.max(320, +process.env.AGENT_WIDTH || 960);
+const FFMPEG = CAM.findFfmpeg([path.join(ROOT, 'bin')]);
+const AGENTS_FILE = path.join(DATA, 'agents.json');
+const ipcams = new Map(); // id → camera (saved fields + runtime state)
+const agents = new Map(); // id → { id, name, keyHash, created, lastSeen, host, version, tests:Map }
+
+function ipcamRuntime() { return { viewers: new Set(), frame: null, ts: 0, fps: 0, n: 0, fpsT: Date.now(), lastPush: 0, state: 'idle', error: null, gen: 0, running: false, startedAt: 0, lastViewer: 0, kind: null, waiters: [], reader: null }; }
+function loadIpcams() {
+  try { for (const c of JSON.parse(fs.readFileSync(IPCAMS_FILE, 'utf8'))) ipcams.set(c.id, Object.assign(ipcamRuntime(), c)); } catch (e) { /* no cameras yet */ }
+  try { for (const a of JSON.parse(fs.readFileSync(AGENTS_FILE, 'utf8'))) agents.set(a.id, Object.assign({ lastSeen: 0, tests: new Map() }, a)); } catch (e) { /* no agents yet */ }
+}
+function saveIpcams() {
+  const list = [...ipcams.values()].filter((c) => !c.temp).map((c) => ({ id: c.id, name: c.name, url: c.url, siteId: c.siteId, agentId: c.agentId || null, created: c.created }));
+  fs.writeFileSync(IPCAMS_FILE, JSON.stringify(list, null, 2));
+}
+function saveAgents() { fs.writeFileSync(AGENTS_FILE, JSON.stringify([...agents.values()].map((a) => ({ id: a.id, name: a.name, keyHash: a.keyHash, created: a.created })), null, 2)); }
+const agentOnline = (a) => !!a && Date.now() - a.lastSeen < 10000;
+function agentPublic(a) { return { id: a.id, name: a.name, online: agentOnline(a), lastSeen: a.lastSeen || null, host: a.host || null, version: a.version || null, cams: [...ipcams.values()].filter((c) => c.agentId === a.id).length, created: a.created }; }
+function ipcamPublic(c) {
+  const a = c.agentId ? agents.get(c.agentId) : null;
+  return { id: c.id, name: c.name, url: maskUrl(c.url), siteId: c.siteId, protocol: protoOf(c.url).toUpperCase(), kind: c.kind, state: c.state, error: c.error, fps: c.fps, viewers: c.viewers.size, lastFrameAgoMs: c.ts ? Date.now() - c.ts : null, created: c.created, agentId: c.agentId || null, agentName: a ? a.name : null, agentOnline: a ? agentOnline(a) : null };
+}
+function registerIpcams() { for (const c of ipcams.values()) if (!c.temp) engine.upsertCamera({ id: c.id, name: c.name, siteId: c.siteId, protocol: protoOf(c.url).toUpperCase() + (c.agentId ? ' · عبر وسيط الشبكة' : ' · عبر السيرفر'), ip: (/\/\/(?:[^@/]*@)?([^/:?]+)/.exec(c.url) || [])[1] || '' }); }
+
+function ipcamFrame(c, buf) {
+  const now = Date.now();
+  c.frame = buf; c.ts = now; c.n++;
+  if (c.state !== 'live') { c.state = 'live'; c.error = null; log(C.c + '● IP CAM' + C.x, 'streaming', c.name, C.dim + c.id + ' · ' + (c.agentId ? 'agent' : c.kind) + C.x); }
+  if (now - c.fpsT >= 1000) { c.fps = Math.round(c.n * 1000 / (now - c.fpsT)); c.n = 0; c.fpsT = now; }
+  c.waiters.splice(0).forEach((fn) => fn(buf));
+  if (now - c.lastPush < 1000 / IPCAM_FPS - 5) return; // pace what goes to browsers
+  c.lastPush = now;
+  pushFrame(c, buf);
+}
+function ipcamFail(c, gen, msg) {
+  if (gen !== c.gen || !c.running) return;
+  if (c.reader) { c.reader.stop(); c.reader = null; }
+  c.state = 'error'; c.error = errAr(msg);
+  log(C.r + '● IP CAM' + C.x, c.name, C.dim + c.error + C.x);
+  c.waiters.splice(0).forEach((fn) => fn(null));
+  if (c.agentId) return; // the agent retries on its side
+  // keep retrying while someone is watching
+  clearTimeout(c.retryT);
+  c.retryT = setTimeout(() => { if (gen === c.gen && c.running && (c.viewers.size || Date.now() - c.lastViewer < 15000)) { c.running = false; ipcamStart(c); } }, 5000);
+}
+function ipcamStop(c) { c.gen++; c.running = false; clearTimeout(c.retryT); if (c.reader) { c.reader.stop(); c.reader = null; } c.state = 'idle'; c.fps = 0; }
+function ipcamStart(c) {
+  if (c.running) return;
+  c.running = true; c.gen++; c.state = 'connecting'; c.error = null; c.startedAt = Date.now(); c.lastViewer = Date.now();
+  if (c.agentId) return; // frames arrive from the agent once its next poll sees a viewer
+  const gen = c.gen;
+  c.reader = CAM.createReader(c.url, { fps: IPCAM_FPS, width: IPCAM_WIDTH, ffmpeg: FFMPEG, onKind: (k) => { c.kind = k; }, onFrame: (b) => { if (gen === c.gen) ipcamFrame(c, b); }, onError: (m) => ipcamFail(c, gen, m) });
+}
+// watchdog: stalled streams reconnect, unwatched cameras stop
+setInterval(() => {
+  const now = Date.now();
+  for (const c of ipcams.values()) {
+    if (c.viewers.size) c.lastViewer = now;
+    if (!c.running) continue;
+    if (!c.viewers.size && now - c.lastViewer > 15000) { ipcamStop(c); if (c.temp) ipcams.delete(c.id); else log(C.dim + '● IP CAM idle → stopped ' + c.name + C.x); continue; }
+    const a = c.agentId ? agents.get(c.agentId) : null;
+    if (c.agentId && !agentOnline(a) && c.state !== 'error') { c.state = 'error'; c.error = 'وسيط الشبكة «' + (a ? a.name : '?') + '» مش متصل — شغّل برنامج الوسيط على كمبيوتر المصنع'; c.waiters.splice(0).forEach((fn) => fn(null)); continue; }
+    if (c.state === 'live' && now - c.ts > 15000) ipcamFail(c, c.gen, 'توقف وصول الصور من الكاميرا');
+    else if (c.state === 'connecting' && now - c.startedAt > 25000) ipcamFail(c, c.gen, 'ETIMEDOUT');
+    else if (c.agentId && c.state === 'error' && agentOnline(a) && now - c.ts < 3000) c.state = 'live';
+  }
+}, 3000);
+function firstFrame(c, ms) {
+  return new Promise((resolve) => {
+    if (c.frame && Date.now() - c.ts < 3000) return resolve(c.frame);
+    const t = setTimeout(() => resolve(null), ms);
+    c.waiters.push((b) => { clearTimeout(t); resolve(b); });
+  });
+}
+function validCamUrl(u) { return typeof u === 'string' && u.length < 2048 && /^(rtsps?|https?|rtmp):\/\/[^\s]+$/i.test(u.trim()); }
+// ask an agent to try a URL once; resolves with { ok, kind, image | error }
+function agentTest(a, camUrl) {
+  return new Promise((resolve) => {
+    const tid = crypto.randomBytes(6).toString('hex');
+    const t = setTimeout(() => { a.tests.delete(tid); resolve({ ok: false, error: agentOnline(a) ? errAr('ETIMEDOUT') : 'وسيط الشبكة «' + a.name + '» مش متصل — شغّله الأول على كمبيوتر المصنع' }); }, 30000);
+    a.tests.set(tid, { tid, url: camUrl, sent: false, done: (r) => { clearTimeout(t); a.tests.delete(tid); resolve(r); } });
+  });
+}
+
+async function ipcamApi(req, res, id, action) {
+  if (!id && req.method === 'GET') return send(res, 200, { items: [...ipcams.values()].filter((c) => !c.temp).map(ipcamPublic), agents: [...agents.values()].map(agentPublic), ffmpeg: FFMPEG });
+  if (req.method === 'POST' && !adminOk(req)) return send(res, 401, { error: 'admin_token_required' });
+  if (req.method === 'POST' && (!id || id === 'test')) {
+    let j;
+    try { j = await readBody(req, 64 * 1024); } catch (e) { return send(res, 400, { error: e.message }); }
+    const existing = j.id && ipcams.get(j.id);
+    // editing without retyping the password: the masked URL keeps the saved credentials
+    const camUrl = existing && j.url && j.url === maskUrl(existing.url) ? existing.url : String(j.url || '').trim();
+    if (!validCamUrl(camUrl)) return send(res, 400, { error: 'الرابط لازم يبدأ بـ rtsp:// أو http:// أو https://' });
+    const agent = j.agentId ? agents.get(j.agentId) : null;
+    if (j.agentId && !agent) return send(res, 400, { error: 'وسيط الشبكة غير موجود' });
+    if (id === 'test') {
+      if (agent) { const r = await agentTest(agent, camUrl); if (r.image) r.image = 'data:image/jpeg;base64,' + r.image; if (r.error) r.error = errAr(r.error); return send(res, 200, r); }
+      // try the camera once from this server without saving it; returns one frame as a preview
+      const t = Object.assign(ipcamRuntime(), { id: 'TEST-' + crypto.randomBytes(4).toString('hex'), name: 'اختبار', url: camUrl, temp: true });
+      ipcams.set(t.id, t); ipcamStart(t);
+      const frame = await firstFrame(t, 20000);
+      const out = frame ? { ok: true, kind: t.kind, image: 'data:image/jpeg;base64,' + frame.toString('base64') } : { ok: false, kind: t.kind, error: t.error || errAr('ETIMEDOUT') };
+      ipcamStop(t); ipcams.delete(t.id);
+      return send(res, 200, out);
+    }
+    let c = existing;
+    if (!c) { c = Object.assign(ipcamRuntime(), { id: 'IPC-' + crypto.randomBytes(3).toString('hex').toUpperCase(), created: Date.now() }); ipcams.set(c.id, c); }
+    const changed = c.url !== camUrl || (c.agentId || null) !== (agent ? agent.id : null);
+    c.name = String(j.name || '').trim().slice(0, 80) || 'كاميرا IP'; c.url = camUrl; c.siteId = j.siteId || c.siteId || 'PLT-01'; c.agentId = agent ? agent.id : null;
+    if (changed && c.running) { ipcamStop(c); if (c.viewers.size) ipcamStart(c); }
+    saveIpcams(); registerIpcams();
+    log(C.c + '● IP CAM' + C.x, existing ? 'updated' : 'added', c.name, C.dim + maskUrl(c.url) + (agent ? ' · via agent ' + agent.name : '') + C.x);
+    engine.emit('ipcam', { id: c.id, action: 'saved' });
+    return send(res, 200, ipcamPublic(c));
+  }
+  const c = ipcams.get(id);
+  if (!c || c.temp) return send(res, 404, { error: 'not_found' });
+  if (action === 'delete' && req.method === 'POST') {
+    ipcamStop(c); for (const r of c.viewers) try { r.end(); } catch (e) { }
+    ipcams.delete(id); saveIpcams(); engine.removeCamera(id);
+    engine.emit('ipcam', { id, action: 'deleted' });
+    return send(res, 200, { ok: true, id });
+  }
+  if (action === 'mjpeg') {
+    mjpegHead(res);
+    c.viewers.add(res); c.lastViewer = Date.now();
+    ipcamStart(c);
+    if (c.frame && Date.now() - c.ts < 5000) pushFrame({ viewers: new Set([res]) }, c.frame);
+    req.on('close', () => { c.viewers.delete(res); c.lastViewer = Date.now(); });
+    return;
+  }
+  if (action === 'snapshot') {
+    ipcamStart(c); c.lastViewer = Date.now();
+    const frame = await firstFrame(c, 15000);
+    return frame ? send(res, 200, frame, { 'Content-Type': 'image/jpeg' }) : send(res, 504, { error: c.error || 'no_frame' });
+  }
+  return send(res, 200, ipcamPublic(c));
+}
+
+/* ---------------- Edge Agents: create / list (admin) · poll / frame / test (agent, by key) ---------------- */
+const keyHash = (k) => crypto.createHash('sha256').update(String(k)).digest('hex');
+function agentByKey(req) {
+  const k = req.headers['x-agent-key']; if (!k) return null;
+  const hsh = keyHash(k);
+  for (const a of agents.values()) if (a.keyHash.length === hsh.length && crypto.timingSafeEqual(Buffer.from(a.keyHash), Buffer.from(hsh))) return a;
+  return null;
+}
+async function agentsApi(req, res, id, action) {
+  if (req.method === 'GET' && !id) return send(res, 200, { items: [...agents.values()].map(agentPublic) });
+  if (req.method !== 'POST') return send(res, 405, { error: 'method_not_allowed' });
+  if (!adminOk(req)) return send(res, 401, { error: 'admin_token_required' });
+  if (!id) {
+    let j = {}; try { j = await readBody(req, 4096); } catch (e) { }
+    const key = 'egk_' + crypto.randomBytes(18).toString('base64url');
+    const a = { id: 'AGT-' + crypto.randomBytes(3).toString('hex').toUpperCase(), name: String(j.name || '').trim().slice(0, 60) || 'وسيط المصنع', keyHash: keyHash(key), created: Date.now(), lastSeen: 0, tests: new Map() };
+    agents.set(a.id, a); saveAgents();
+    log(C.c + '● AGENT' + C.x, 'created', a.name, C.dim + a.id + C.x);
+    return send(res, 200, Object.assign(agentPublic(a), { key })); // the key is shown once
+  }
+  const a = agents.get(id);
+  if (!a) return send(res, 404, { error: 'not_found' });
+  if (action === 'delete') {
+    for (const c of ipcams.values()) if (c.agentId === id) { ipcamStop(c); c.agentId = null; }
+    agents.delete(id); saveAgents(); saveIpcams();
+    return send(res, 200, { ok: true, id });
+  }
+  return send(res, 404, { error: 'not_found' });
+}
+async function agentApi(req, res, action, camId) {
+  const a = agentByKey(req);
+  if (!a) return send(res, 401, { error: 'bad_agent_key' });
+  const first = !agentOnline(a);
+  a.lastSeen = Date.now(); a.host = String(req.headers['x-agent-host'] || '').slice(0, 60); a.version = String(req.headers['x-agent-version'] || '').slice(0, 20);
+  if (first) { log(C.g + '● AGENT' + C.x, 'online', a.name, C.dim + a.host + C.x); engine.emit('ipcam', { agentId: a.id, action: 'online' }); }
+  if (action === 'poll') {
+    const now = Date.now(), tests = [];
+    for (const t of a.tests.values()) if (!t.sent) { t.sent = true; tests.push({ tid: t.tid, url: t.url }); }
+    const cams = [...ipcams.values()].filter((c) => c.agentId === a.id).map((c) => ({ id: c.id, url: c.url, want: c.running && (c.viewers.size > 0 || now - c.lastViewer < 15000) }));
+    return send(res, 200, { agent: { id: a.id, name: a.name }, cams, tests, fps: AGENT_FPS, width: AGENT_WIDTH });
+  }
+  if (action === 'frame') {
+    const c = ipcams.get(camId);
+    if (!c || c.agentId !== a.id) { req.resume(); return send(res, 404, { error: 'not_found' }); }
+    let buf;
+    try { buf = await readRaw(req, 4 * 1024 * 1024); } catch (e) { return send(res, 413, { error: e.message }); }
+    if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return send(res, 415, { error: 'jpeg_only' });
+    if (!c.running) return send(res, 410, { error: 'not_watched' });
+    c.kind = 'agent'; ipcamFrame(c, buf);
+    return send(res, 200, { ok: true });
+  }
+  let j = {};
+  try { j = await readBody(req, 8 * 1024 * 1024); } catch (e) { return send(res, 400, { error: e.message }); }
+  if (action === 'error') {
+    const c = ipcams.get(camId);
+    if (c && c.agentId === a.id && c.running) { c.state = 'error'; c.error = errAr(j.error); c.waiters.splice(0).forEach((fn) => fn(null)); log(C.r + '● IP CAM' + C.x, c.name, C.dim + 'agent: ' + c.error + C.x); }
+    return send(res, 200, { ok: true });
+  }
+  if (action === 'test') {
+    const t = a.tests.get(camId);
+    if (t) t.done({ ok: !!j.ok, kind: j.kind || null, image: j.image || null, error: j.error || null });
+    return send(res, 200, { ok: true });
+  }
+  return send(res, 404, { error: 'not_found' });
+}
 
 function lanAddresses() { return Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address); }
 
@@ -223,12 +460,18 @@ async function api(req, res, pathname, query) {
   const t0 = Date.now();
   const cm = /^\/api\/v1\/cam\/([^/]+)(?:\/(frame|mjpeg|offer|answer))?$/.exec(pathname);
   if (cm) return camApi(req, res, cm[1], cm[2] || 'status');
+  const ic = /^\/api\/v1\/ipcams(?:\/([A-Za-z0-9-]+))?(?:\/(mjpeg|snapshot|delete))?\/?$/.exec(pathname);
+  if (ic) return ipcamApi(req, res, ic[1] || null, ic[2] || 'status');
+  const ag = /^\/api\/v1\/agents(?:\/([A-Za-z0-9-]+))?(?:\/(delete))?\/?$/.exec(pathname);
+  if (ag) return agentsApi(req, res, ag[1] || null, ag[2] || null);
+  const am = /^\/api\/v1\/agent\/(poll|frame|error|test)(?:\/([A-Za-z0-9-]+))?$/.exec(pathname);
+  if (am) return agentApi(req, res, am[1], am[2] || null);
   if (pathname === '/api/v1/admin/reset' && req.method === 'POST') {
-    if (process.env.ADMIN_TOKEN && req.headers['x-admin-token'] !== process.env.ADMIN_TOKEN) return send(res, 401, { error: 'admin_token_required' });
+    if (!adminOk(req)) return send(res, 401, { error: 'admin_token_required' });
     let j = {};
     try { j = JSON.parse((await readRaw(req, 4096)).toString('utf8') || '{}'); } catch (e) { }
     if (j.confirm !== 'RESET') return send(res, 400, { error: 'confirm_required' });
-    return send(res, 200, resetData());
+    return send(res, 200, resetData(!!j.people));
   }
   if (pathname === '/api/v1/netinfo') return send(res, 200, { lan: lanAddresses(), port: PORT, httpsPort: httpsServer ? HTTPS_PORT : null });
   if (pathname === '/api/v1/stream') {
@@ -243,6 +486,7 @@ async function api(req, res, pathname, query) {
   let body = {};
   if (req.method === 'POST') {
     try { body = await readBody(req, 16 * 1024 * 1024); } catch (e) { return send(res, 400, { error: e.message }); }
+    if (/^\/api\/v1\/workers\/[^/]+\/delete$/.test(pathname) && !adminOk(req)) return send(res, 401, { error: 'admin_token_required' });
     // persist images to disk and journal the mutation
     if (pathname === '/api/v1/events' && body.evidence && body.evidence.image) {
       const f = saveDataUrl(body.evidence.image, 'evt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7));
@@ -252,18 +496,26 @@ async function api(req, res, pathname, query) {
       if (body.image) body.image = saveDataUrl(body.image, 'veh_' + Date.now()) || null;
       if (body.plateImage) body.plateImage = saveDataUrl(body.plateImage, 'plate_' + Date.now()) || null;
     }
-    if (pathname === '/api/v1/workers' && body.photo && String(body.photo).indexOf('data:') === 0) body.photo = saveDataUrl(body.photo, 'worker_' + (body.id || 'new')) || null;
+    if (pathname === '/api/v1/workers' && body.photo && String(body.photo).indexOf('data:') === 0) body.photo = saveDataUrl(body.photo, 'worker_' + (body.id || 'new') + '_' + Date.now().toString(36)) || null;
+    if (pathname === '/api/v1/attendance/sighting') {
+      // check-in photo once per shift-day; the check-out photo is overwritten (at most once a minute)
+      body.ts = +body.ts || Date.now();
+      const info = body.image && engine.attendanceLookup(body.workerId, body.ts);
+      if (info) {
+        const base = 'att_' + String(body.workerId).replace(/[^A-Za-z0-9_-]/g, '_') + '_' + info.day;
+        if (!info.rec) body.inImg = saveDataUrl(body.image, base + '_in');
+        else if (body.ts - (info.rec.outImgTs || 0) > 60000 && body.ts - info.rec.lastTs >= engine.attSettings.gapSec * 1000) body.outImg = saveDataUrl(body.image, base + '_out');
+      }
+      delete body.image;
+    }
   }
   const out = engine.handle(req.method, pathname, query, body);
   if (req.method === 'POST' && out.status === 200) {
-    if (pathname === '/api/v1/events') journal('event', Object.assign({}, body, { ts: out.body.ts }));
-    else if (/^\/api\/v1\/events\/[^/]+\/action$/.test(pathname)) journal('action', { id: pathname.split('/')[4], action: body.action, body });
-    else if (pathname === '/api/v1/workers') journal('worker', Object.assign({}, body, { id: out.body.id }));
-    else if (pathname === '/api/v1/gate/log') journal('gate', Object.assign({}, body, { ts: out.body.ts, lane: out.body.lane }));
-    else if (pathname === '/api/v1/vehicles') journal('vehicle', body);
+    const j = engine.journalEntry(pathname, body, out.body);
+    if (j) journal(j[0], j[1]);
   }
   send(res, out.status, out.body, { 'Server-Timing': 'engine;dur=' + (Date.now() - t0) });
-  if (!/\/(system|summary|health)$/.test(pathname)) log(req.method === 'POST' ? C.y + 'POST' + C.x : C.dim + 'GET ' + C.x, pathname, (out.status === 200 ? C.g : C.r) + out.status + C.x, C.dim + (Date.now() - t0) + 'ms' + C.x);
+  if (!/\/(system|summary|health)$/.test(pathname) && pathname !== '/api/v1/attendance/sighting') log(req.method === 'POST' ? C.y + 'POST' + C.x : C.dim + 'GET ' + C.x, pathname, (out.status === 200 ? C.g : C.r) + out.status + C.x, C.dim + (Date.now() - t0) + 'ms' + C.x);
 }
 
 function serveStatic(req, res, pathname) {
@@ -272,7 +524,10 @@ function serveStatic(req, res, pathname) {
   if (rel === '/console' || rel === '/console/') rel = '/console.html';
   const base = rel.indexOf('/data/') === 0 ? DATA : ROOT;
   const file = path.normalize(path.join(base, base === DATA ? rel.slice('/data'.length) : rel));
-  if (!file.startsWith(base) || file.includes(path.sep + '.') || file.startsWith(path.join(ROOT, 'server')) || file === JOURNAL || file.startsWith(CERT_DIR)) return send(res, 403, { error: 'forbidden' });
+  // only evidence images are public under /data — never the journals or the camera list (credentials)
+  const inside = (dir) => file === dir || file.startsWith(dir + path.sep);
+  const privateData = inside(DATA) || inside(path.join(ROOT, 'data'));
+  if (!file.startsWith(base) || file.includes(path.sep + '.') || inside(path.join(ROOT, 'server')) || inside(CERT_DIR) || inside(path.join(ROOT, 'bin')) || (privateData && !file.startsWith(EVID + path.sep) && !file.startsWith(path.join(ROOT, 'data', 'evidence') + path.sep))) return send(res, 403, { error: 'forbidden' });
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) return send(res, 404, '<h1>404</h1>', { 'Content-Type': 'text/html; charset=utf-8' });
     const ext = path.extname(file).toLowerCase();
@@ -308,21 +563,21 @@ if (!process.env.RAILWAY_ENVIRONMENT && fs.existsSync(path.join(CERT_DIR, 'key.p
   httpsServer.listen(HTTPS_PORT, process.env.HOST || '0.0.0.0');
 }
 
-const replayed = replayJournal();
-engine.start();
+loadIpcams();
+const replayed = bootEngine();
 
 server.listen(PORT, HOST, () => {
-  const ifaces = Object.values(os.networkInterfaces()).flat().filter((i) => i && i.family === 'IPv4' && !i.internal).map((i) => i.address);
   console.log('');
   console.log(C.b + '  EGIC · AI Safety & Smart Access Platform' + C.x);
   console.log('  ' + C.o + 'POWERED BY DELMON & DEV SMART X' + C.x);
   console.log('');
   console.log('  ● Executive briefing   ' + C.c + 'http://localhost:' + PORT + '/' + C.x);
   console.log('  ● Live console         ' + C.c + 'http://localhost:' + PORT + '/console.html' + C.x);
-  if (HOST === '0.0.0.0') ifaces.forEach((ip) => console.log('  ● On your network      ' + C.c + 'http://' + ip + ':' + PORT + '/' + C.x));
+  if (HOST === '0.0.0.0') lanAddresses().forEach((ip) => console.log('  ● On your network      ' + C.c + 'http://' + ip + ':' + PORT + '/' + C.x));
   console.log('  ● API                  ' + C.dim + '/api/v1/*   ·   live stream /api/v1/stream' + C.x);
   if (httpsServer) lanAddresses().forEach((ip) => console.log('  ● Phone camera (HTTPS) ' + C.c + 'https://' + ip + ':' + HTTPS_PORT + '/phone.html' + C.x));
-  console.log('  ● Engine               ' + C.g + 'ONLINE' + C.x + C.dim + '  (' + engine.events.length + ' events · ' + engine.gateLog.length + ' gate reads · ' + engine.cameras.length + ' cameras' + (replayed ? ' · ' + replayed + ' live records restored' : '') + ')' + C.x);
+  console.log('  ● IP cameras           ' + C.dim + ipcams.size + ' saved · RTSP via ' + FFMPEG + C.x);
+  console.log('  ● Engine               ' + C.g + 'ONLINE' + C.x + C.dim + '  (' + engine.events.length + ' events · ' + engine.gateLog.length + ' gate reads · ' + engine.workers.length + ' employees' + (replayed ? ' · ' + replayed + ' live records restored' : '') + ')' + C.x);
   console.log('');
   console.log(C.dim + '  Demo environment — simulated data is clearly labelled. Press Ctrl+C to stop.' + C.x);
   console.log('');

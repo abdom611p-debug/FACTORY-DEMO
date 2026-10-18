@@ -69,7 +69,10 @@
     sos: '<path d="M7 18v-6a5 5 0 0 1 10 0v6M5 21h14M12 3v2M4.2 6.2l1.4 1.4M19.8 6.2l-1.4 1.4"/>',
     station: '<rect x="3" y="8" width="11" height="9" rx="1.5"/><path d="M14 11h3l3 3v3h-6M6 17v3M11 17v3M6 5h5"/>',
     posture: '<circle cx="13" cy="4.5" r="2"/><path d="M13 7c-2 3-4 4-7 4M13 7l1 6-3 8M14 13l4 3 1 5"/>',
-    refresh: '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/>'
+    refresh: '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/>'
   };
   function icon(name, cls) {
     var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -201,7 +204,7 @@
           h('dt', { text: 'القسم / الوردية' }), h('dd', { text: (e.dept || '—') + ' · الوردية ' + ({ A: 'أ', B: 'ب', C: 'ج' })[e.shift || 'A'] }),
           h('dt', { text: 'المسؤول' }), h('dd', { text: e.assignee || '—' }),
           h('dt', { text: 'زمن الاستجابة' }), h('dd', { class: 'mono', text: e.ackTs ? Math.round((e.ackTs - e.ts) / 1000) + ' ث' : '—' }),
-          h('dt', { text: 'الدليل' }), h('dd', { text: e.evidence && e.evidence.image ? 'لقطة حقيقية من الكاميرا (مخزنة داخليًا)' : '3 إطارات + مقطع 10 ثوانٍ (محاكاة)' }),
+          h('dt', { text: 'الدليل' }), h('dd', { text: e.evidence && e.evidence.image ? 'لقطة حقيقية من الكاميرا (مخزنة داخليًا)' : 'لا توجد صورة (حدث محاكاة)' }),
           e.note ? h('dt', { text: 'ملاحظة' }) : null, e.note ? h('dd', { text: e.note }) : null),
         h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
           e.status === 'OPEN' ? h('button', { class: 'btn btn--sm', text: 'استلام', onclick: function () { act(e, 'ack'); } }) : null,
@@ -219,8 +222,9 @@
   /* Router & shell                                                       */
   /* ------------------------------------------------------------------ */
   var NAV = [
-    ['المراقبة', 'MONITOR', [['overview', 'نظرة عامة', 'overview'], ['wall', 'الجدار الحي', 'wall'], ['live', 'المختبر الحي — AI', 'live', 'LIVE']]],
-    ['التحليلات', 'ANALYTICS', [['events', 'سجل الأحداث', 'events', 'count'], ['workers', 'العاملون والملفات', 'workers'], ['bbs', 'مؤشرات السلوك BBS', 'bbs'], ['reports', 'التقارير', 'reports']]],
+    ['المراقبة', 'MONITOR', [['overview', 'نظرة عامة', 'overview'], ['live', 'المختبر الحي — AI', 'live', 'LIVE']]],
+    ['الموارد البشرية', 'HR', [['workers', 'الموظفون والملفات', 'workers'], ['attendance', 'الحضور والانصراف', 'clock', 'LIVE']]],
+    ['التحليلات', 'ANALYTICS', [['events', 'سجل الأحداث', 'events', 'count'], ['bbs', 'مؤشرات السلوك BBS', 'bbs'], ['reports', 'التقارير', 'reports']]],
     ['الوصول الذكي', 'SMART ACCESS', [['gates', 'البوابات وANPR', 'gates'], ['anpr', 'قارئ اللوحات المصرية', 'anpr', 'LIVE'], ['vehicles', 'سجل المركبات', 'vehicles']]],
     ['الإدارة', 'MANAGE', [['sites', 'المواقع والمناطق', 'sites'], ['cameras', 'الكاميرات', 'cameras'], ['access', 'المستخدمون والصلاحيات', 'access'], ['rules', 'قواعد التنبيه والتصعيد', 'rules'], ['integrations', 'التكامل المؤسسي', 'integrations']]],
     ['النظام', 'SYSTEM', [['health', 'صحة النظام', 'health'], ['audit', 'سجل التدقيق', 'audit'], ['api', 'الخلفية والواجهة البرمجية', 'api']]]
@@ -361,7 +365,8 @@
     });
     API.get('workers', { site: site, limit: 7 }).then(function (w) {
       var list = h('div', { class: 'rank' });
-      w.items.filter(function (x) { return !x.presenter; }).slice(0, 6).forEach(function (x, i) {
+      if (!w.items.length) list.appendChild(h('div', { class: 'empty' }, h('div', { text: 'لا يوجد موظفون مسجلون بعد.' }), h('a', { class: 'btn btn--xs', href: '#/workers', style: { marginTop: '8px' }, text: '+ إضافة موظف' })));
+      w.items.slice(0, 6).forEach(function (x, i) {
         var r = h('div', { class: 'rank-row', role: 'button', tabindex: '0' }, h('span', { class: 'n', text: pad2(i + 1) }), h('span', { class: 'av', text: initials(x.name) }), h('div', null, h('b', { text: x.name }), h('span', { text: x.id + ' · ' + x.dept + ' · امتثال ' + num(x.compliance, 1) + '%' })), h('span', { class: 'v', text: String(x.violations) }));
         r.addEventListener('click', function () { navigate('#/workers/' + x.id); });
         list.appendChild(r);
@@ -375,48 +380,20 @@
     API.get('sites/stats').then(function (ss) {
       C.bars(cmpCard.body, { items: ss.map(function (x) { return { label: x.code, value: x.compliance, tipTitle: x.name + ' · ' + x.sub, id: x.id }; }), max: 100, height: 230, format: function (v) { return v.toFixed(1) + '%'; }, valueLabel: 'امتثال', showValues: true, onClick: function (it) { setSite(it.id); } });
     });
-    var wallCard = card('الجدار الحي — معاينة', { sub: '4 كاميرات · اضغط للفتح', actions: [h('a', { class: 'btn btn--xs', href: '#/wall', text: 'فتح الجدار' })] });
-    row4.appendChild(wallCard);
-    var mini = h('div', { class: 'wall n4' }); wallCard.body.appendChild(mini);
-    startWall(mini, 4, site);
-  });
-
-  /* ------------------------------------------------------------------ */
-  /* VIEW: Live wall                                                      */
-  /* ------------------------------------------------------------------ */
-  var wallSize = 9;
-  function startWall(container, n, site) {
-    clear(container); container.className = 'wall n' + n;
-    var cams = Object.keys(S.cams).map(function (k) { return S.cams[k]; }).filter(function (c) { return !c.live && c.kind !== 'anpr' && c.status !== 'offline' && (site === 'ALL' || c.siteId === site); });
-    // pick a diverse set of scene kinds
-    var byKind = {}, picked = [];
-    cams.forEach(function (c) { (byKind[c.scene] = byKind[c.scene] || []).push(c); });
-    var kinds = ['production', 'checkpoint', 'forklift', 'storage', 'hot', 'dock', 'packing', 'machine', 'chemical', 'test', 'gate', 'perimeter'];
-    var k = 0; while (picked.length < n && k < 60) { var arr = byKind[kinds[k % kinds.length]]; if (arr && arr.length) picked.push(arr.splice(Math.floor(arr.length / 2), 1)[0]); k++; }
-    var scenes = picked.map(function (cam) {
-      var cv = h('canvas', { width: n === 1 ? 1280 : n <= 4 ? 640 : 426, height: n === 1 ? 720 : n <= 4 ? 360 : 240 });
-      var tile = h('div', { class: 'tile' }, cv, h('span', { class: 'brandmark', text: 'EGIC · AI' }), h('span', { class: 'tile-tag tag-demo', text: 'SIM FEED' }), h('div', { class: 'tile-cap' }, h('b', { text: cam.name.split(' · ')[0] }), h('span', { class: 'mono', text: siteName(cam.siteId) + ' · ' + cam.id })));
-      tile.addEventListener('click', function () { if (S.route === 'wall') { wallSize = 1; startWall(container, 1, site); } else navigate('#/wall'); });
-      container.appendChild(tile);
-      return { sc: new SC.Scene(cv, cam), tile: tile, cam: cam, cv: cv };
-    });
-    var running = true, last = 0, visible = true;
-    var io = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver(function (en) { visible = en.some(function (x) { return x.isIntersecting; }); }) : null;
-    if (io) io.observe(container);
-    function frame(t) {
-      if (!running) return;
-      if (visible && !document.hidden && t - last > 80) { last = t; scenes.forEach(function (s) { s.sc.draw(t); }); }
-      requestAnimationFrame(frame);
+    var attCard = card('الحضور اليوم', { sub: 'بالتعرف على الوجه · لحظيًا', icon: 'clock', actions: [h('a', { class: 'btn btn--xs', href: '#/attendance', text: 'فتح الحضور' })] });
+    row4.appendChild(attCard);
+    function drawAtt() {
+      API.get('attendance', { site: site }).then(function (a) {
+        var t = a.totals; clear(attCard.body);
+        if (!t.employees) { attCard.body.appendChild(h('div', { class: 'empty' }, h('div', { text: 'لا يوجد موظفون بعد.' }), h('a', { class: 'btn btn--xs', href: '#/workers', style: { marginTop: '8px' }, text: '+ إضافة موظف' }))); return; }
+        var g = h('div', { class: 'grid g-2', style: { gap: '10px' } });
+        [['حاضر', t.present, 'check'], ['في العمل الآن', t.inNow, 'workers'], ['متأخر', t.late, 'clock'], ['غائب', t.absent, 'alert']].forEach(function (k) { g.appendChild(stat(k[0], num(k[1], 0), null, { icon: k[2], critical: k[0] === 'غائب' && k[1] > 0 })); });
+        attCard.body.appendChild(g);
+        attCard.body.appendChild(h('div', { class: 'muted', style: { fontSize: '12px', marginTop: '10px' }, text: t.employees + ' موظف · ' + (t.pending ? t.pending + ' لم تبدأ ورديتهم بعد · ' : '') + a.day }));
+      });
     }
-    requestAnimationFrame(frame);
-    var off = API.on('event', function (e) { scenes.forEach(function (s) { if (s.cam.id === e.cameraId) { s.tile.classList.remove('is-alert'); void s.tile.offsetWidth; s.tile.classList.add('is-alert'); } }); });
-    onCleanup(function () { running = false; off(); if (io) io.disconnect(); });
-  }
-  register('wall', function (v) {
-    v.appendChild(viewHead('الجدار الحي', 'مراقبة متعددة الكاميرات مع طبقة الذكاء الاصطناعي · ' + (S.site === 'ALL' ? 'كل المواقع' : siteName(S.site)), [seg([['1', '1'], ['4', '4'], ['9', '9'], ['16', '16']], String(wallSize), function (n) { wallSize = +n; S.cleanup.forEach(function (f) { try { f(); } catch (e) { } }); S.cleanup = []; startWall(grid, wallSize, S.site); }), h('a', { class: 'btn btn--sm btn--accent', href: '#/live', text: 'الكاميرا الحية بالذكاء الاصطناعي ↗' })]));
-    var grid = h('div', { class: 'wall' }); v.appendChild(grid);
-    v.appendChild(h('p', { class: 'muted', style: { fontSize: '12px', margin: 0 } }, 'البث في هذا الجدار محاكاة رسومية للكاميرات (SIM FEED) لأغراض العرض؛ الكشف الحقيقي على كاميرا حية متاح في «المختبر الحي — AI».'));
-    startWall(grid, wallSize, S.site);
+    drawAtt();
+    sub('attendance', drawAtt); sub('worker', drawAtt);
   });
 
   /* ------------------------------------------------------------------ */
@@ -486,56 +463,61 @@
   register('workers', function (v, id) {
     if (id) return renderProfile(v, id);
     var q = { site: S.site, q: '', risk: '', limit: 60 };
-    v.appendChild(viewHead('العاملون والملفات', 'امتثال كل عامل وسجل مخالفاته — الملفات تتحدث تلقائيًا من الكاميرات', [h('a', { class: 'btn btn--sm btn--accent', href: '#/workers/' + S.meta.presenterId }, icon('userplus'), 'ملف العرض المباشر')]));
+    v.appendChild(viewHead('الموظفون والملفات', 'ملف لكل موظف: البيانات، بصمة الوجه، الحضور والانصراف، ومخالفات السلامة', [h('a', { class: 'btn btn--sm', href: '#/attendance' }, icon('clock'), 'الحضور والانصراف'), h('button', { class: 'btn btn--sm btn--accent', onclick: function () { editProfile(null, function (w) { navigate('#/workers/' + w.id); }); } }, icon('userplus'), 'إضافة موظف')]));
     var kp = h('div', { class: 'grid g-3' }); v.appendChild(kp);
     var fl = h('div', { class: 'filters card', style: { padding: '14px 16px' } });
-    var qIn = h('input', { class: 'input', placeholder: 'اسم، رقم وظيفي، قسم…', type: 'search' });
+    var qIn = h('input', { class: 'input', placeholder: 'اسم، كود، قسم…', type: 'search' });
     qIn.addEventListener('input', debounce(function () { q.q = qIn.value; load(); }, 250));
     fl.appendChild(h('label', { class: 'field', style: { flex: 1, minWidth: '220px' } }, h('span', { text: 'بحث' }), qIn));
-    fl.appendChild(h('label', { class: 'field' }, h('span', { text: 'التصفية' }), select([['', 'كل العاملين'], ['repeat', 'تكرار مخالفات (3+)']], '', function (x) { q.risk = x; load(); })));
+    fl.appendChild(h('label', { class: 'field' }, h('span', { text: 'التصفية' }), select([['', 'كل الموظفين'], ['repeat', 'تكرار مخالفات (3+)']], '', function (x) { q.risk = x; load(); })));
     v.appendChild(fl);
     var tc = card(null, { flush: true }); v.appendChild(tc);
     function load() {
       API.get('workers', q).then(function (r) {
         clear(kp);
-        [['عاملون مسجلون', num(r.total, 0), 'ضمن النطاق المحدد', 'workers'], ['متوسط الامتثال', num(r.avgCompliance, 1) + '%', 'ملاحظات المتابعة · 30 يومًا', 'check'], ['تكرار المخالفات', num(r.repeat, 0), '3 مخالفات أو أكثر · للتوجيه', 'alert']].forEach(function (k) { var c = card(null); c.body.style.padding = '0'; c.body.appendChild(stat(k[0], k[1], k[2], { icon: k[3] })); kp.appendChild(c); });
+        [['موظفون مسجلون', num(r.total, 0), 'ضمن النطاق المحدد', 'workers'], ['ببصمة وجه', num(r.items.filter(function (w) { return w.enrolled; }).length, 0), 'يتسجل حضورهم تلقائيًا', 'check'], ['تكرار المخالفات', num(r.repeat, 0), '3 مخالفات أو أكثر · للتوجيه', 'alert']].forEach(function (k) { var c = card(null); c.body.style.padding = '0'; c.body.appendChild(stat(k[0], k[1], k[2], { icon: k[3] })); kp.appendChild(c); });
         clear(tc.body);
         tc.body.appendChild(table([
-          { t: 'العامل', f: function (w) { return h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, h('span', { class: 'av', style: { width: '34px', height: '34px', borderRadius: '9px', background: 'var(--bg-4)', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: '11px', overflow: 'hidden', flex: 'none' } }, w.photo ? h('img', { src: API.evidenceUrl(w.photo), alt: '', style: { width: '100%', height: '100%', objectFit: 'cover' } }) : initials(w.name)), h('div', null, h('div', { class: 'strong', text: w.name }), h('div', { class: 'mono muted', style: { fontSize: '11px' }, text: w.id }))); } },
+          { t: 'الموظف', f: function (w) { return h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, h('span', { class: 'av', style: { width: '34px', height: '34px', borderRadius: '9px', background: 'var(--bg-4)', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: '11px', overflow: 'hidden', flex: 'none' } }, w.photo ? h('img', { src: API.evidenceUrl(w.photo), alt: '', style: { width: '100%', height: '100%', objectFit: 'cover' } }) : initials(w.name)), h('div', null, h('div', { class: 'strong', text: w.name }), h('div', { class: 'mono muted', style: { fontSize: '11px' }, text: w.id }))); } },
           { t: 'الموقع', f: function (w) { return w.siteName; } },
-          { t: 'القسم / الدور', f: function (w) { return h('div', null, h('div', { text: w.dept }), h('div', { class: 'muted', style: { fontSize: '11.5px' }, text: w.role })); } },
-          { t: 'الوردية', f: function (w) { return ({ A: 'أ', B: 'ب', C: 'ج' })[w.shift]; } },
-          { t: 'الامتثال', f: function (w) { return h('span', { class: 'mono', style: { color: w.compliance < 85 ? '#ff9b9b' : w.compliance < 93 ? 'var(--warning)' : 'var(--green-hi)' }, text: num(w.compliance, 1) + '%' }); } },
+          { t: 'القسم / الوظيفة', f: function (w) { return h('div', null, h('div', { text: w.dept }), h('div', { class: 'muted', style: { fontSize: '11.5px' }, text: w.role })); } },
+          { t: 'الموبايل', f: function (w) { return w.phone ? h('span', { class: 'mono', dir: 'ltr', text: w.phone }) : h('span', { class: 'muted', text: '—' }); } },
+          { t: 'الوردية', f: function (w) { return shiftName(w.shift); } },
           { t: 'المخالفات', f: function (w) { return h('span', { class: 'mono strong', text: String(w.violations) }); } },
-          { t: 'آخر ظهور', f: function (w) { return h('span', { class: 'mono muted', text: ago(w.lastSeen) }); } },
-          { t: '', f: function (w) { return w.presenter ? h('span', { class: 'tag-real', text: 'ملف العرض' }) : w.enrolled ? h('span', { class: 'chip', text: 'وجه مسجل' }) : null; } }
-        ], r.items, { onRow: function (w) { navigate('#/workers/' + w.id); } }));
+          { t: 'آخر ظهور', f: function (w) { return h('span', { class: 'mono muted', text: w.lastSeen ? ago(w.lastSeen) : '—' }); } },
+          { t: 'بصمة الوجه', f: function (w) { return w.enrolled ? h('span', { class: 'badge badge--good', text: 'مسجلة' }) : h('span', { class: 'badge badge--neutral', text: 'غير مسجلة' }); } }
+        ], r.items, { onRow: function (w) { navigate('#/workers/' + w.id); }, empty: 'لا يوجد موظفون بعد — اضغط «إضافة موظف» لإنشاء أول ملف.' }));
       });
     }
     load();
   });
 
   function renderProfile(v, id) {
-    v.appendChild(h('div', null, h('a', { href: '#/workers', class: 'btn btn--xs btn--ghost', text: '→ كل العاملين' })));
+    v.appendChild(h('div', null, h('a', { href: '#/workers', class: 'btn btn--xs btn--ghost', text: '→ كل الموظفين' })));
     var holder = h('div', { style: { display: 'grid', gap: '16px' } }); v.appendChild(holder);
     function load() {
       API.get('workers/' + encodeURIComponent(id)).then(function (w) {
         clear(holder);
-        var enrolled = !!(S.faceIndex[w.id] && S.faceIndex[w.id].length) || w.enrolled;
+        var enrolled = w.enrolled;
         var head = card(null); head.body.style.padding = '0';
         head.body.appendChild(h('div', { class: 'profile-h' },
           h('div', { class: 'ph' }, w.photo ? h('img', { src: API.evidenceUrl(w.photo), alt: w.name }) : initials(w.name)),
-          h('div', null, h('div', { class: 'card-t', text: 'ملف العامل · WORKER PROFILE' }), h('h2', { text: w.name }),
-            h('div', { class: 'meta' }, h('span', { class: 'chip mono', text: w.id }), h('span', { class: 'chip', text: w.siteName }), h('span', { class: 'chip', text: w.dept }), h('span', { class: 'chip', text: w.role }), h('span', { class: 'chip', text: 'الوردية ' + ({ A: 'أ', B: 'ب', C: 'ج' })[w.shift] }), enrolled ? h('span', { class: 'badge badge--good', text: 'بصمة الوجه مسجلة' }) : h('span', { class: 'badge badge--neutral', text: 'بصمة الوجه غير مسجلة' }), w.presenter ? h('span', { class: 'tag-real', text: 'ملف العرض المباشر' }) : null)),
-          h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } }, h('a', { class: 'btn btn--sm btn--accent', href: '#/live' }, icon('live'), 'فتح الكاميرا الحية'), h('button', { class: 'btn btn--sm', onclick: function () { editProfile(w, load); } }, 'تعديل البيانات'))));
+          h('div', null, h('div', { class: 'card-t', text: 'ملف الموظف · EMPLOYEE PROFILE' }), h('h2', { text: w.name }),
+            h('div', { class: 'meta' }, h('span', { class: 'chip mono', text: w.id }), h('span', { class: 'chip', text: w.siteName }), h('span', { class: 'chip', text: w.dept }), h('span', { class: 'chip', text: w.role }), h('span', { class: 'chip', text: shiftName(w.shift) + ' · ' + shiftHours(w.shift) }), w.phone ? h('span', { class: 'chip mono', dir: 'ltr', text: '📞 ' + w.phone }) : null, enrolled ? h('span', { class: 'badge badge--good', text: 'بصمة الوجه مسجلة (' + w.faces + ')' }) : h('span', { class: 'badge badge--neutral', text: 'بصمة الوجه غير مسجلة' }))),
+          h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+            h('button', { class: 'btn btn--sm btn--accent', onclick: function () { window.EGICLive.enrollDialog(w.id, load); } }, icon('userplus'), enrolled ? 'إعادة تسجيل الوجه' : 'تسجيل الوجه'),
+            h('button', { class: 'btn btn--sm', onclick: function () { editProfile(w, load); } }, 'تعديل البيانات'),
+            h('button', { class: 'btn btn--sm btn--ghost', onclick: function () { deleteWorker(w); } }, icon('trash'), 'حذف'))));
         holder.appendChild(head);
+        if (!enrolled) holder.appendChild(h('div', { class: 'card', style: { padding: '12px 16px', borderColor: 'rgba(247,146,36,.5)', fontSize: '13px' } }, 'الموظف ده لسه ملوش بصمة وجه — ', h('b', { text: 'سجّل وجهه' }), ' عشان الكاميرات تتعرف عليه وتسجل حضوره وانصرافه تلقائيًا.'));
+        holder.appendChild(attendanceCard(w));
         var ks = h('div', { class: 'grid g-4' });
         var live = w.events.filter(function (e) { return String(e.source).indexOf('live') === 0; });
-        [['نسبة الامتثال', num(w.compliance, 1) + '%', num(w.obs, 0) + ' ملاحظة متابعة', 'check'], ['إجمالي المخالفات', num(w.violations, 0), 'منها ' + live.length + ' لقطات حية', 'alert'], ['آخر ظهور', w.lastSeen ? ago(w.lastSeen) : '—', w.lastSeen ? fDT(w.lastSeen) : '', 'cameras'], ['أكثر مخالفة', topType(w.byType), 'حسب التكرار', 'bbs']].forEach(function (k) { var c = card(null); c.body.style.padding = '0'; c.body.appendChild(stat(k[0], k[1], k[2], { icon: k[3] })); ks.appendChild(c); });
+        [['نسبة الامتثال', w.obs ? num(w.compliance, 1) + '%' : '—', num(w.obs, 0) + ' ملاحظة متابعة', 'check'], ['إجمالي المخالفات', num(w.violations, 0), 'منها ' + live.length + ' لقطات حية', 'alert'], ['آخر ظهور', w.lastSeen ? ago(w.lastSeen) : '—', w.lastSeen ? fDT(w.lastSeen) : '', 'cameras'], ['أكثر مخالفة', topType(w.byType), 'حسب التكرار', 'bbs']].forEach(function (k) { var c = card(null); c.body.style.padding = '0'; c.body.appendChild(stat(k[0], k[1], k[2], { icon: k[3] })); ks.appendChild(c); });
         holder.appendChild(ks);
-        var tl = card('سجل المخالفات والأدلة', { sub: 'اللقطات الحية تُسجل تلقائيًا من الكاميرا بعلامة مائية للمنصة' });
+        var tl = card('سجل مخالفات السلامة والأدلة', { sub: 'اللقطات الحية تُسجل تلقائيًا من الكاميرا بعلامة مائية للمنصة' });
         var list = h('div', { class: 'timeline' });
-        if (!w.events.length) list.appendChild(h('div', { class: 'empty' }, h('div', { text: 'لا توجد مخالفات مسجلة في هذا الملف.' }), h('div', { class: 'muted', style: { marginTop: '6px' }, text: 'افتح «المختبر الحي» وقف أمام الكاميرا بدون خوذة أو نظارة أو سترة — ستظهر اللقطة هنا خلال ثوانٍ.' })));
+        if (!w.events.length) list.appendChild(h('div', { class: 'empty' }, h('div', { text: 'لا توجد مخالفات مسجلة في هذا الملف.' })));
         groupIncidents(w.events).forEach(function (g) {
           var e = g[0], img = evidenceSrc(e, 400);
           var item = h('div', { class: 'tl-item' + (String(e.source).indexOf('live') === 0 ? ' is-live' : '') },
@@ -550,7 +532,70 @@
     }
     load();
     sub('event', function (e) { if (e.workerId === id) load(); });
-    sub('worker', function (w) { if (w.id === id) load(); });
+    sub('worker', function (w) { if (w.id === id) { if (w.deleted) navigate('#/workers'); else load(); } });
+    sub('attendance', function (a) { if (a.record && a.record.workerId === id) load(); });
+  }
+  /* shift labels from the attendance settings */
+  function shiftName(k) { var sh = S.meta && S.meta.shifts && S.meta.shifts[k]; return sh ? sh.name : 'الوردية ' + (({ A: 'أ', B: 'ب', C: 'ج' })[k] || k || '—'); }
+  function shiftHours(k) { var sh = S.meta && S.meta.shifts && S.meta.shifts[k]; return sh ? '⁦' + sh.start + '–' + sh.end + '⁩' : ''; } // LTR isolate: keeps 06:00–14:00 in order inside Arabic text
+  var ATT_STATUS = { IN: ['في العمل', 'good'], OUT: ['انصرف', 'low'], ABSENT: ['غائب', 'critical'], OFF: ['إجازة أسبوعية', 'neutral'], PENDING: ['لم يحضر بعد', 'neutral'] };
+  function attBadges(o) {
+    var st = ATT_STATUS[o.status] || [o.status, 'neutral'];
+    return h('div', { style: { display: 'flex', gap: '4px', flexWrap: 'wrap' } }, h('span', { class: 'badge badge--' + st[1], text: st[0] }),
+      o.late ? h('span', { class: 'badge badge--medium', text: 'متأخر ' + o.lateMin + ' د' }) : null,
+      o.early ? h('span', { class: 'badge badge--medium', text: 'انصراف مبكر ' + o.earlyMin + ' د' }) : null,
+      o.missingOut ? h('span', { class: 'badge badge--neutral', text: 'بدون انصراف' }) : null,
+      o.overtimeMin >= 30 ? h('span', { class: 'chip', text: 'إضافي ' + hm(o.overtimeMin) }) : null);
+  }
+  function hm(min) { min = Math.max(0, Math.round(min || 0)); return Math.floor(min / 60) + ':' + pad2(min % 60); }
+  function monthRange(offset) {
+    var p = cairo(Date.now()), y = p.y, m = p.mo - (offset || 0);
+    while (m < 0) { m += 12; y--; }
+    var last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(), from = y + '-' + pad2(m + 1) + '-01', to = y + '-' + pad2(m + 1) + '-' + pad2(last);
+    return { from: from, to: to < fDate(Date.now()) ? to : fDate(Date.now()), label: y + '-' + pad2(m + 1) };
+  }
+  // monthly attendance in the employee profile
+  function attendanceCard(w) {
+    var off = 0;
+    var c = card('الحضور والانصراف', { icon: 'clock', sub: shiftName(w.shift) + ' · ' + shiftHours(w.shift) });
+    var monthSel = select([[0, 'الشهر الحالي'], [1, 'الشهر الماضي'], [2, 'منذ شهرين']].map(function (x) { return [String(x[0]), x[1]]; }), '0', function (x) { off = +x; draw(); });
+    var exp = h('button', { class: 'btn btn--xs', onclick: function () { var r = monthRange(off); exportAttendance(r.from, r.to, { worker: w.id }, 'EGIC-attendance_' + w.id + '_' + r.label + '.csv'); } }, icon('download'), 'Excel');
+    c.head.querySelector('.card-actions').appendChild(monthSel); c.head.querySelector('.card-actions').appendChild(exp);
+    var body = h('div'); c.body.appendChild(body);
+    function draw() {
+      var r = monthRange(off);
+      API.get('attendance/range', { from: r.from, to: r.to, worker: w.id }).then(function (a) {
+        clear(body);
+        var s = a.summary, ks = h('div', { class: 'grid g-4', style: { marginBottom: '12px' } });
+        [['أيام حضور', s.present + ' / ' + s.days, 'check'], ['غياب', s.absent, 'alert'], ['تأخير', s.late + ' مرة · ' + hm(s.lateMin), 'clock'], ['ساعات العمل', hm(s.workedMin), 'workers']].forEach(function (k) { ks.appendChild(stat(k[0], String(k[1]), null, { icon: k[2] })); });
+        body.appendChild(ks);
+        body.appendChild(table([
+          { t: 'اليوم', f: function (o) { return h('span', { class: 'mono', text: o.day }); } },
+          { t: 'الحضور', f: function (o) { return o.firstTs ? h('span', { class: 'mono', text: fHM(o.firstTs) }) : h('span', { class: 'muted', text: '—' }); } },
+          { t: 'الانصراف', f: function (o) { return o.lastTs && o.status === 'OUT' && !o.missingOut ? h('span', { class: 'mono', text: fHM(o.lastTs) }) : o.status === 'IN' ? h('span', { class: 'muted', text: 'آخر ظهور ' + fHM(o.lastTs) }) : h('span', { class: 'muted', text: '—' }); } },
+          { t: 'المدة', f: function (o) { return o.firstTs ? h('span', { class: 'mono', text: hm(o.workedMin) }) : ''; } },
+          { t: 'الحالة', f: attBadges }
+        ], a.rows.slice().reverse(), { maxH: '360px', empty: 'لا توجد أيام في هذه الفترة' }));
+      });
+    }
+    draw();
+    return c;
+  }
+  function exportAttendance(from, to, q, name) {
+    API.get('attendance/range', Object.assign({ from: from, to: to }, q || {})).then(function (a) {
+      var rows = [['التاريخ', 'كود الموظف', 'الاسم', 'القسم', 'الوظيفة', 'الوردية', 'بداية الوردية', 'نهاية الوردية', 'الحضور', 'الانصراف', 'مدة العمل (ساعة:دقيقة)', 'الحالة', 'تأخير (دقيقة)', 'انصراف مبكر (دقيقة)', 'إضافي (دقيقة)', 'كاميرا الحضور']];
+      a.rows.forEach(function (o) {
+        var st = (ATT_STATUS[o.status] || [o.status])[0] + (o.late ? ' · متأخر' : '') + (o.early ? ' · انصراف مبكر' : '') + (o.missingOut ? ' · بدون انصراف' : '');
+        rows.push([o.day, o.workerId, o.workerName, o.dept, o.role, shiftName(o.shift), fHM(o.start), fHM(o.end), o.firstTs ? fHM(o.firstTs) : '', o.firstTs && o.status === 'OUT' && !o.missingOut ? fHM(o.lastTs) : '', o.firstTs ? hm(o.workedMin) : '', st, o.firstTs ? o.lateMin : '', o.firstTs ? o.earlyMin : '', o.firstTs ? o.overtimeMin : '', o.firstCam || '']);
+      });
+      downloadCsv(name || ('EGIC-attendance_' + from + '_' + to + '.csv'), rows);
+      toast('تم تصدير الحضور', a.rows.length + ' سطر · يفتح في Excel');
+    });
+  }
+  function deleteWorker(w) {
+    if (!window.confirm('حذف ملف «' + w.name + '» نهائيًا؟ هيتمسح كمان بصمة الوجه وسجل الحضور بتاعه.')) return;
+    var p = API.state.mode === 'server' ? window.EGICLive.adminPost('workers/' + encodeURIComponent(w.id) + '/delete') : API.post('workers/' + encodeURIComponent(w.id) + '/delete');
+    p.then(function () { toast('تم حذف الموظف', w.name); navigate('#/workers'); }).catch(function (e) { toast('تعذر الحذف', e.message, { kind: 'critical' }); });
   }
   function groupIncidents(evs) {
     var out = [], map = {};
@@ -558,14 +603,41 @@
     return out;
   }
   function topType(byType) { var k = Object.keys(byType || {}).sort(function (a, b) { return byType[b] - byType[a]; })[0]; return k ? S.meta.types[k].ar : '—'; }
+  // create (w = null) or edit an employee
   function editProfile(w, done) {
-    var name = h('input', { class: 'input', value: w.name });
-    var dept = h('input', { class: 'input', value: w.dept });
-    var role = h('input', { class: 'input', value: w.role });
+    var isNew = !w; w = w || { siteId: S.site !== 'ALL' ? S.site : 'PLT-01', shift: 'A' };
+    var code = h('input', { class: 'input mono', dir: 'ltr', value: w.id || '', placeholder: 'تلقائي لو فاضي', disabled: !isNew });
+    var name = h('input', { class: 'input', value: w.name || '' });
+    var dept = h('input', { class: 'input', value: w.dept && w.dept !== 'غير محدد' ? w.dept : '', placeholder: 'مثال: الإنتاج' });
+    var role = h('input', { class: 'input', value: w.role && w.role !== 'موظف' ? w.role : '', placeholder: 'مثال: مشغل ماكينة' });
+    var phone = h('input', { class: 'input mono', dir: 'ltr', type: 'tel', value: w.phone || '', placeholder: '01xxxxxxxxx' });
+    var shiftSel = select(Object.keys(S.meta.shifts).map(function (k) { return [k, shiftName(k) + ' (' + shiftHours(k) + ')']; }), w.shift || 'A', function () { });
     var siteSel = select(S.meta.sites.map(function (s) { return [s.id, s.name]; }), w.siteId, function () { });
-    var body = h('div', { style: { display: 'grid', gap: '12px' } }, h('label', { class: 'field' }, h('span', { text: 'الاسم' }), name), h('label', { class: 'field' }, h('span', { text: 'القسم' }), dept), h('label', { class: 'field' }, h('span', { text: 'الدور' }), role), h('label', { class: 'field' }, h('span', { text: 'الموقع' }), siteSel),
-      h('div', { style: { display: 'flex', gap: '8px' } }, h('button', { class: 'btn btn--primary', text: 'حفظ', onclick: function () { API.post('workers', { id: w.id, name: name.value.trim() || w.name, dept: dept.value, role: role.value, siteId: siteSel.value }).then(function () { closeModal(); toast('تم حفظ الملف', name.value); done(); }); } }), h('button', { class: 'btn', text: 'إلغاء', onclick: closeModal })));
-    openModal('تعديل ملف العامل · ' + w.id, body);
+    var msg = h('div', { style: { fontSize: '12.5px', color: '#ff9b9b', minHeight: '16px' } });
+    var enrollAfter = h('input', { type: 'checkbox', checked: true });
+    function save() {
+      var nm = name.value.trim(), id = code.value.trim();
+      if (!nm) { msg.textContent = 'اكتب اسم الموظف.'; return; }
+      if (isNew && id && !/^[A-Za-z0-9_-]{1,32}$/.test(id)) { msg.textContent = 'الكود حروف إنجليزي وأرقام و - فقط.'; return; }
+      var check = isNew && id ? API.get('workers/' + encodeURIComponent(id)).then(function () { throw new Error('الكود ' + id + ' مستخدم لموظف تاني'); }, function () { }) : Promise.resolve();
+      check.then(function () {
+        return API.post('workers', { id: isNew ? (id || undefined) : w.id, name: nm, dept: dept.value.trim() || 'غير محدد', role: role.value.trim() || 'موظف', phone: phone.value.trim(), shift: shiftSel.value, siteId: siteSel.value });
+      }).then(function (saved) {
+        closeModal(); toast(isNew ? 'تم إضافة الموظف' : 'تم حفظ الملف', saved.name + ' · ' + saved.id);
+        if (done) done(saved);
+        if (isNew && enrollAfter.checked) setTimeout(function () { window.EGICLive.enrollDialog(saved.id, function () { route(); }); }, 250);
+      }).catch(function (e) { msg.textContent = e.message; });
+    }
+    var body = h('div', { style: { display: 'grid', gap: '12px' } },
+      h('div', { class: 'grid g-2', style: { gap: '10px' } }, h('label', { class: 'field' }, h('span', { text: 'كود الموظف' }), code), h('label', { class: 'field' }, h('span', { text: 'الاسم *' }), name)),
+      h('div', { class: 'grid g-2', style: { gap: '10px' } }, h('label', { class: 'field' }, h('span', { text: 'القسم' }), dept), h('label', { class: 'field' }, h('span', { text: 'الوظيفة' }), role)),
+      h('div', { class: 'grid g-2', style: { gap: '10px' } }, h('label', { class: 'field' }, h('span', { text: 'الموبايل' }), phone), h('label', { class: 'field' }, h('span', { text: 'الوردية' }), shiftSel)),
+      h('label', { class: 'field' }, h('span', { text: 'الموقع' }), siteSel),
+      isNew ? h('label', { class: 'switch' }, enrollAfter, 'سجّل بصمة الوجه بعد الحفظ مباشرة') : null,
+      msg,
+      h('div', { style: { display: 'flex', gap: '8px' } }, h('button', { class: 'btn btn--primary', text: isNew ? 'إضافة الموظف' : 'حفظ', onclick: save }), h('button', { class: 'btn', text: 'إلغاء', onclick: closeModal })));
+    openModal(isNew ? 'إضافة موظف جديد' : 'تعديل ملف الموظف · ' + w.id, body);
+    setTimeout(function () { (isNew ? code : name).focus(); }, 50);
   }
 
   /* ------------------------------------------------------------------ */
@@ -713,19 +785,20 @@
 
   /* ---------- wipe test data (server: evidence + journal · browser: local copies) ---------- */
   function resetDialog() {
-    var faces = h('input', { type: 'checkbox' });
+    var people = h('input', { type: 'checkbox' });
     var msg = h('div', { class: 'muted', style: { fontSize: '12.5px' } });
     var go = h('button', { class: 'btn btn--primary', text: 'مسح البيانات نهائيًا' });
     openModal('🧹 مسح بيانات التجارب', h('div', { style: { display: 'grid', gap: '12px' } },
       h('div', { style: { lineHeight: '1.8' } }, 'هيتم مسح كل اللي اتسجل من التجارب: ', h('b', { text: 'صور الأدلة، أحداث الكشف الحي (حريق · تدخين · PPE · سلوك)، وقراءات اللوحات' }), '. البيانات التوضيحية المولّدة هتفضل زي ما هي.'),
-      h('label', { class: 'switch' }, faces, 'امسح كمان بصمات الوجه المسجلة على هذا المتصفح'),
+      h('div', { class: 'muted', style: { fontSize: '12.5px' }, text: 'الموظفون وبصمات الوجه وسجل الحضور بيفضلوا محفوظين.' }),
+      h('label', { class: 'switch' }, people, 'امسح كمان كل الموظفين وبصمات الوجه وسجل الحضور (لا يمكن التراجع)'),
       msg, h('div', { class: 'row' }, go, h('button', { class: 'btn', text: 'إلغاء', onclick: closeModal }))));
     go.addEventListener('click', function () {
       go.disabled = true; msg.textContent = 'جارٍ المسح…';
-      var local = function () { try { if (faces.checked) localStorage.removeItem('egic-faces'); } catch (e) { } return API.resetLocal(); };
+      var local = function () { return API.resetLocal(people.checked); };
       if (API.state.mode !== 'server') { local().then(function () { location.reload(); }); return; }
       var send = function (token) {
-        return fetch(API.state.base + '/api/v1/admin/reset', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { 'X-Admin-Token': token } : {}), body: JSON.stringify({ confirm: 'RESET' }) });
+        return fetch(API.state.base + '/api/v1/admin/reset', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { 'X-Admin-Token': token } : {}), body: JSON.stringify({ confirm: 'RESET', people: people.checked }) });
       };
       var token = null; try { token = sessionStorage.getItem('egic-admin-token'); } catch (e) { }
       send(token).then(function (r) {
@@ -763,7 +836,6 @@
         S.meta.sites.forEach(function (s) { ss.appendChild(h('option', { value: s.id, text: s.name + ' · ' + s.sub })); });
         ss.addEventListener('change', function () { setSite(ss.value); });
         renderStatus(r[2]);
-        try { S.faceIndex = JSON.parse(localStorage.getItem('egic-faces') || '{}'); } catch (e) { S.faceIndex = {}; }
         API.on('health', function (hs) { renderStatus(hs); });
         setInterval(function () { var c = $('#clock'); if (c) { clear(c); c.appendChild(h('b', { text: fTime(Date.now()) })); c.appendChild(document.createTextNode(' CAIRO')); } }, 1000);
         API.on('event', function (e) {
@@ -774,6 +846,7 @@
           if (e.type === 'SOS_GESTURE') { $('#sosImg').src = evidenceSrc(e, 240); $('#sosSub').textContent = e.siteName + ' · ' + e.zoneName + ' · ' + fTime(e.ts) + (e.workerName ? ' · ' + e.workerName : ''); $('#sos').classList.add('is-on'); setTimeout(function () { $('#sos').classList.remove('is-on'); }, 15000); }
         });
         API.on('trace', function (t) { if (t.step === 'DONE') toast('اكتملت سلسلة الحدث', 'تم تحديث لوحة القيادة ومؤشرات BBS', { action: t.eventId ? ['عرض الحدث', function () { API.get('events/' + t.eventId).then(openEvent); }] : null }); });
+        API.on('attendance', function (a) { if (a.kind === 'SETTINGS') API.get('meta').then(function (m) { S.meta.shifts = m.shifts; }); });
         API.on('reset', function (r) { toast('تم مسح بيانات التجارب', (r.files || 0) + ' صورة · ' + (r.records || 0) + ' سجل — جارٍ إعادة التحميل', { ms: 2500 }); setTimeout(function () { location.reload(); }, 1500); });
         API.on('connection', function (c) { if (!c.connected) toast('انقطع الاتصال بالخادم', 'إعادة المحاولة تلقائيًا…', { kind: 'critical' }); });
         window.addEventListener('hashchange', route);
@@ -783,6 +856,6 @@
     }).catch(function (e) { console.error(e); clear($('#view')).appendChild(h('div', { class: 'empty', text: 'تعذر تشغيل المنصة: ' + e.message })); });
   }
 
-  window.EGICUI = { h: h, $: $, clear: clear, icon: icon, card: card, stat: stat, table: table, seg: seg, select: select, chartCard: chartCard, toast: toast, openDrawer: openDrawer, closeDrawer: closeDrawer, openModal: openModal, closeModal: closeModal, imageModal: imageModal, openEvent: openEvent, register: register, viewHead: viewHead, navigate: navigate, onCleanup: onCleanup, every: every, sub: sub, S: S, fTime: fTime, fHM: fHM, fDate: fDate, fDT: fDT, ago: ago, num: num, sevBadge: sevBadge, statusBadge: statusBadge, decBadge: decBadge, srcTag: srcTag, evidenceSrc: evidenceSrc, siteName: siteName, initials: initials, downloadCsv: downloadCsv, debounce: debounce, AR_DEC: AR_DEC, AR_STATUS: AR_STATUS, route: route };
+  window.EGICUI = { h: h, $: $, clear: clear, icon: icon, card: card, stat: stat, table: table, seg: seg, select: select, chartCard: chartCard, toast: toast, openDrawer: openDrawer, closeDrawer: closeDrawer, openModal: openModal, closeModal: closeModal, imageModal: imageModal, openEvent: openEvent, register: register, viewHead: viewHead, navigate: navigate, onCleanup: onCleanup, every: every, sub: sub, S: S, fTime: fTime, fHM: fHM, fDate: fDate, fDT: fDT, ago: ago, num: num, sevBadge: sevBadge, statusBadge: statusBadge, decBadge: decBadge, srcTag: srcTag, evidenceSrc: evidenceSrc, siteName: siteName, initials: initials, downloadCsv: downloadCsv, debounce: debounce, AR_DEC: AR_DEC, AR_STATUS: AR_STATUS, route: route, shiftName: shiftName, shiftHours: shiftHours, attBadges: attBadges, hm: hm, exportAttendance: exportAttendance, editProfile: editProfile, monthRange: monthRange };
   document.addEventListener('DOMContentLoaded', boot);
 })();

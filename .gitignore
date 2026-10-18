@@ -38,3 +38,7 @@ frontend/.vite/
 *.user
 *.suo
 platform/.certs/
+platform/data/registry.ndjson
+platform/data/ipcams.json
+platform/bin/
+platform/data/agents.json
