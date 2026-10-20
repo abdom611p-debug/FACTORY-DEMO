@@ -23,7 +23,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const SOI = Buffer.from([0xff, 0xd8]), EOI = Buffer.from([0xff, 0xd9]);
 
 /* ------------------------------------------------------------------ */
@@ -111,23 +111,39 @@ function createReader(url, opts) {
   const fail = (m) => { if (r.stopped) return; r.stop(); opts.onError(m); };
   const kind = (k) => { r.kind = k; if (opts.onKind) opts.onKind(k); };
   r.stop = () => {
-    r.stopped = true; clearTimeout(r.pollT);
+    r.stopped = true; clearTimeout(r.pollT); clearTimeout(switchT);
     if (r.proc) { try { r.proc.kill('SIGKILL'); } catch (e) { } r.proc = null; }
     if (r.ctx && r.ctx.req) { try { r.ctx.req.destroy(); } catch (e) { } }
   };
+  // RTSP: try TCP first; many cheap cameras only answer over UDP (VLC falls back silently) → switch if no frame in 7 s
+  let transport = 'tcp', gotFrame = false, switchT = null;
   function viaFfmpeg() {
     kind('ffmpeg');
+    const isRtsp = /^rtsps?:/i.test(url);
     const args = ['-hide_banner', '-loglevel', 'error', '-fflags', 'nobuffer', '-flags', 'low_delay'];
-    if (/^rtsps?:/i.test(url)) args.push('-rtsp_transport', 'tcp');
+    if (isRtsp) args.push('-rtsp_transport', transport);
     args.push('-i', url, '-an', '-vf', 'fps=' + fps + ",scale='min(" + width + ",iw)':-2", '-q:v', '6', '-f', 'mjpeg', 'pipe:1');
     let proc, stderr = '';
     try { proc = spawn(opts.ffmpeg || 'ffmpeg', args, { windowsHide: true }); } catch (e) { return fail(e.code || e.message); }
     r.proc = proc;
-    const split = jpegSplitter(frame);
+    if (isRtsp && transport === 'tcp') {
+      clearTimeout(switchT);
+      switchT = setTimeout(() => {
+        if (gotFrame || r.stopped || r.proc !== proc) return;
+        transport = 'udp'; r.proc = null; proc.removeAllListeners('exit'); try { proc.kill('SIGKILL'); } catch (e) { }
+        viaFfmpeg();
+      }, 7000);
+    }
+    const split = jpegSplitter((b) => { gotFrame = true; frame(b); });
     proc.stdout.on('data', (d) => split(d));
     proc.stderr.on('data', (d) => { stderr = (stderr + d.toString()).slice(-600); });
     proc.on('error', (e) => fail(e.code === 'ENOENT' ? 'ENOENT' : e.message));
-    proc.on('exit', (code) => fail(stderr.trim().split('\n').pop() || ('ffmpeg exit ' + code)));
+    proc.on('exit', (code) => {
+      if (r.proc !== proc) return;
+      // TCP refused by the camera → retry once over UDP before giving up
+      if (isRtsp && transport === 'tcp' && !gotFrame && !r.stopped) { clearTimeout(switchT); transport = 'udp'; r.proc = null; return viaFfmpeg(); }
+      fail(stderr.trim().split('\n').pop() || ('ffmpeg exit ' + code));
+    });
   }
   function snapshot(res, t0) {
     const chunks = [];
@@ -237,7 +253,7 @@ function runAgent() {
     let done = false;
     const finish = (out) => { if (done) return; done = true; clearTimeout(tm); rd.stop(); post('/api/v1/agent/test/' + encodeURIComponent(t.tid), out).catch(() => { }); log(out.ok ? C.g + '✓ test ok' + C.x : C.r + '✗ test: ' + errAr(out.error) + C.x); };
     const rd = createReader(t.url, { fps: 2, width: cfg.width, ffmpeg: FFMPEG, onFrame: (b) => finish({ ok: true, kind: rd.kind, image: b.toString('base64') }), onError: (m) => finish({ ok: false, kind: rd.kind, error: m }) });
-    const tm = setTimeout(() => finish({ ok: false, kind: rd.kind, error: 'ETIMEDOUT' }), 20000);
+    const tm = setTimeout(() => finish({ ok: false, kind: rd.kind, error: 'ETIMEDOUT' }), 27000);
   }
   async function poll() {
     if (polling) return; polling = true;

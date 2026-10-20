@@ -302,7 +302,7 @@ function validCamUrl(u) { return typeof u === 'string' && u.length < 2048 && /^(
 function agentTest(a, camUrl) {
   return new Promise((resolve) => {
     const tid = crypto.randomBytes(6).toString('hex');
-    const t = setTimeout(() => { a.tests.delete(tid); resolve({ ok: false, error: agentOnline(a) ? errAr('ETIMEDOUT') : 'وسيط الشبكة «' + a.name + '» مش متصل — شغّله الأول على كمبيوتر المصنع' }); }, 30000);
+    const t = setTimeout(() => { a.tests.delete(tid); resolve({ ok: false, error: agentOnline(a) ? errAr('ETIMEDOUT') : 'وسيط الشبكة «' + a.name + '» مش متصل — شغّله الأول على كمبيوتر المصنع' }); }, 35000);
     a.tests.set(tid, { tid, url: camUrl, sent: false, done: (r) => { clearTimeout(t); a.tests.delete(tid); resolve(r); } });
   });
 }
